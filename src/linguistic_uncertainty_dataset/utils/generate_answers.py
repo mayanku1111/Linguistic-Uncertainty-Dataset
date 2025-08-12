@@ -19,33 +19,41 @@ class Generator_Qwen3_4B(Generator_Qwen):
     def __init__(
         self,
         model_id: str = r"Qwen/Qwen3-4B",
-        prompt_template_path: str = r"../prompts/generate_answer.txt",
+        prompt_template_path: str = r"./prompts/generate_answer.txt",
         device: str = "cuda:1",
-        temperature: float = 1.0,
-        top_p: float = 0.95,
-        max_new_tokens: int = 100,
-        num_answers: int = 10
+        temperature=0.6,
+        top_p=0.95,
+        top_k=20,
+        MinP=0,
+        enable_thinking=True,
+        num_answers=10,
+        max_new_tokens=32768,
     ):
         self.model_id = model_id
         self.prompt_template_path = prompt_template_path
         self.temperature = temperature
         self.top_p = top_p
+        self.top_k = top_k
         self.max_new_tokens = max_new_tokens
+        self.MinP = 0
         self.num_answers = num_answers
-        self.device = device or (
-            "cuda" if torch.cuda.is_available() else "cpu")
+        self.enable_thinking = enable_thinking
+        if torch.cuda.is_available():
+            self.device = device
+        else:
+            raise ("ERROR: Current GPU {self.device} not available.")
 
         self._load_model()
-        self._load_prompt_template()
+        self._load_prompt()
 
     def _load_model(self):
         self.tokenizer = AutoTokenizer.from_pretrained(
-            self.model_id, trust_remote_code=True)
+            self.model_id, trust_remote_code=True,)
         self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_id, trust_remote_code=True)
+            self.model_id, torch_dtype="auto", trust_remote_code=True,)
         self.model.to(self.device).eval()
 
-    def _load_prompt_template(self):
+    def _load_prompt(self):
         if not os.path.exists(self.prompt_template_path):
             raise FileNotFoundError(
                 f"No such file or directory: '{self.prompt_template_path}'")
@@ -58,25 +66,51 @@ class Generator_Qwen3_4B(Generator_Qwen):
         return self.prompt_template.format(question=question)
 
     def _generate_answer(self, prompt: str) -> str:
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+        messages = [
+            {"role" : "user", 
+            "content" : prompt}
+        ]
+        text = self.tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=self.enable_thinking
+        )
+        inputs = self.tokenizer(text, return_tensors="pt").to(self.device)
         outputs = self.model.generate(
             **inputs,
             max_new_tokens=self.max_new_tokens,
             do_sample=True,
-            top_p=self.top_p,
-            temperature=self.temperature,
-            pad_token_id=self.tokenizer.eos_token_id
+            temperature = self.temperature,
+            top_p = self.top_p,
+            top_k = self.top_k,
+            min_p = self.MinP,
         )
-        decoded = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        return decoded.replace(prompt, "").strip()
+        # Denote this line to obtain full answer.
+        # decoded = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        
+        output_ids = outputs[0][len(inputs.input_ids[0]):].tolist()
+        try:
+            index = len(output_ids) - output_ids[::-1].index(151668)
+        except ValueError:
+            index = 0        
+        
+        # Denote this line to obtain thinking content.
+        # thinking_content = self.tokenizer.decoder(output_ids[:index], skip_special_tokens=True)
+        
+        # This line is answer content.
+        content = self.tokenizer.decode(output_ids[index:], skip_special_tokens=True)
+
+        return content.replace(prompt, "").strip()
 
     def generate_from_csv(self, input_csv: str, output_csv: str):
         if not os.path.exists(input_csv):
-            raise FileNotFoundError(f"No such file or directory: '{input_csv}'")
+            raise FileNotFoundError(
+                f"No such file or directory: '{input_csv}'")
 
         df = pd.read_csv(input_csv)
-        if 'problem' not in df.columns:
-            raise ValueError("Missing column 'problem.'")
+        if "problem" not in df.columns:
+            raise ValueError("Missing column 'problem'.")
 
         done_set = set()
         if os.path.exists(output_csv):
@@ -107,7 +141,7 @@ class Generator_Qwen3_4B(Generator_Qwen):
                         "answer_index": i,
                         "answer": answer
                     })
-                    output_file.flush()  
+                    output_file.flush()
                     done_set.add((question, i))
                 except Exception as e:
                     print(f"Error in generate answers", {e})
@@ -117,22 +151,17 @@ class Generator_Qwen3_4B(Generator_Qwen):
         print(f"Answers output in {output_csv}")
 
 
-if __name__ == "__main__":
-    current_dir = os.getcwd()
-    cache_root = os.path.abspath(os.path.join(
-        current_dir, "..", "build", ".cache", "huggingface"))
-    os.environ['TRANSFORMERS_CACHE'] = cache_root
+# if __name__ == "__main__":
+#     generator = Generator_Qwen3_4B(
+#         model_id="Qwen/Qwen3-4B",
+#         prompt_template_path="prompt_template.txt",
+#         temperature=1.0,
+#         top_p=0.95,
+#         max_new_tokens=100,
+#         num_answers=10
+#     )
 
-    generator = Generator_Qwen3_4B(
-        model_id="Qwen/Qwen3-4B",
-        prompt_template_path="prompt_template.txt",
-        temperature=1.0,
-        top_p=0.95,
-        max_new_tokens=100,
-        num_answers=10
-    )
-
-    generator.generate_from_csv(
-        input_csv="questionlist.csv",
-        output_csv="question_answer_list.csv"
-    )
+#     generator.generate_from_csv(
+#         input_csv="questionlist.csv",
+#         output_csv="question_answer_list.csv"
+#     )

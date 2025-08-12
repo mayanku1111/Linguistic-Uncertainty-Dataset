@@ -1,0 +1,26 @@
+STEP 0:
+- [√] Download Qwen3.5-4B-Instruct
+- [ ] Modify the all_sentences_by_confidence.csv into :
+    - [√] "quesionlist.csv" : ["question"], 
+    - [√] "question_answer_confidence.csv" : ["question", "answer", "confidence-level"]
+
+STEP 1:
+- [√] LM generate 10 answers for each question
+
+STEP 2:
+- [〇] idenify the entailment between the answers
+- [〇] compute semantic entropy
+- [〇] classify uncertainty for each sentence
+
+STEP 3:
+- [√] idenify each question's gound truth from most frequence
+
+STEP 4:
+- [ ] LLM generate uncertainty expression (Qwen3.5-8B instead temporarily)
+
+STEP 5:
+- [ ] generate finetun dataset["question", "answer", "uncertainty answer"]
+
+STEP 6:
+- [ ] LoRA
+- [ ] SFT
