@@ -10,3 +10,4 @@ src/linguistic_uncertainty_dataset/test.py
 src/linguistic_uncertainty_dataset/utils/entailment.py
 src/linguistic_uncertainty_dataset/utils/temperature_sample.py
 test.ipynb
+.venv1/
