@@ -21,7 +21,8 @@ def main(args):
                 top_k=20,
                 MinP=0,
                 enable_thinking=True,
-                num_answers=10
+                num_answers=10,
+                device=args.cuda
             )
             output_path_4B = os.path.join(os.path.dirname(output_path),
                                           os.path.splitext(os.path.basename(output_path))[0] + "_4B" + os.path.splitext(output_path)[1])
@@ -70,5 +71,10 @@ if __name__ == "__main__":
                            default=os.path.join(
                                os.getcwd(), r"src/linguistic_uncertainty_dataset/prompts/generate_answer.txt"),
                            help="prompt path")
+    argparser.add_argument("-cuda", "--cuda",
+                           type=str,
+                           dest="cuda",
+                           default="cuda:0",
+                           help="GPU")
     args = argparser.parse_args()
     main(args)

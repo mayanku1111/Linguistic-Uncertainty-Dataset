@@ -13,6 +13,7 @@ MODE=""
 MODEL_ID="Qwen/Qwen3-4B"
 INPUT="${INPUT_PATH}/questionlist.csv"
 PROMPT="${PROMPT_PAHT}/generate_answer.txt"
+CUDA="0"
 
 show_help() {
   cat <<EOF
@@ -40,7 +41,7 @@ make_dir() {
 test_mode() {
     echo "############### TEST MODE ###############"
     make_dir
-    python3 ${CURRENT_DIR}/build.py -t -model "$MODEL_ID" -input "$INPUT" -prompt "$PROMPT"
+    python3 "${CURRENT_DIR}/build.py" -t -model "$MODEL_ID" -input "$INPUT" -prompt "$PROMPT" -cuda "cuda:$CUDA"
 }
 
 clean_cache() {
@@ -99,6 +100,15 @@ while [[ $# -gt 0 ]]; do
     -input_prompt|--input_prompt|-prompt|--prompt)
       if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then
         PROMPT="$2"
+        shift 2
+      else
+        echo "ERROR: -prompt requires an argument."
+        exit 1
+      fi
+      ;;
+    -cuda|--cuda)
+      if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then
+        CUDA="$2"
         shift 2
       else
         echo "ERROR: -prompt requires an argument."
