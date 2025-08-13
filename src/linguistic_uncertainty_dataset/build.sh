@@ -1,14 +1,18 @@
 #!/bin/bash
 set -euo pipefail
 
-export CURRENT_DIR=$(pwd)
+export CURRENT_DIR="$(dirname $0)"
 export BUILD_PATH="${CURRENT_DIR}/build"
 export CACHE_PATH="${BUILD_PATH}/.cache"
 export OUTPUT_PATH="${BUILD_PATH}/output"
 export HF_HOME="${CACHE_PATH}/huggingface"
+export INPUT_PATH="${CURRENT_DIR}/res"
+export PROMPT_PAHT="${CURRENT_DIR}/prompt"
 
-MODEL_ID="Qwen/Qwen3-4B"
 MODE=""
+MODEL_ID="Qwen/Qwen3-4B"
+INPUT="${INPUT_PATH}/questionlist.csv"
+PROMPT="${PROMPT_PAHT}/generate_answer.txt"
 
 show_help() {
   cat <<EOF
@@ -36,7 +40,7 @@ make_dir() {
 test_mode() {
     echo "############### TEST MODE ###############"
     make_dir
-    python3 build.py -t -model "$MODEL_ID"
+    python3 ${CURRENT_DIR}/build.py -t -model "$MODEL_ID" -input "$INPUT" -prompt "$PROMPT"
 }
 
 clean_cache() {
@@ -80,6 +84,24 @@ while [[ $# -gt 0 ]]; do
         shift 2
       else
         echo "ERROR: -model requires an argument."
+        exit 1
+      fi
+      ;;
+    -input_csv|--input_csv|-input|--input)
+      if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then
+        INPUT="$2"
+        shift 2
+      else
+        echo "ERROR: -input requires an argument."
+        exit 1
+      fi
+      ;;
+    -input_prompt|--input_prompt|-prompt|--prompt)
+      if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then
+        PROMPT="$2"
+        shift 2
+      else
+        echo "ERROR: -prompt requires an argument."
         exit 1
       fi
       ;;
