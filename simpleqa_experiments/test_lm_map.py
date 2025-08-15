@@ -5,6 +5,7 @@ from transformers import AutoTokenizer, AutoModel
 from torch.optim import AdamW
 import pandas as pd
 import numpy as np
+import os
 
 # === 示例数据 ===
 sample_data = [
@@ -81,7 +82,7 @@ from openai import OpenAI
 import json
 
 # Initialize OpenAI client with API key from environment variable
-client = OpenAI(api_key="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")
+client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 # batch_689da7dd35708190a6d0ed4012152e50
 # batch_689da7e0394881908ea6ad1d2bb7a249

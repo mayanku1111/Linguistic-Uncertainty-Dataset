@@ -1,2 +1,13 @@
 __pycache__
 tmp/
+src/linguistic_uncertainty_dataset/build
+1.ipynb
+log.log
+res/
+sim.py
+src/linguistic_uncertainty_dataset/run.sh
+src/linguistic_uncertainty_dataset/test.py
+src/linguistic_uncertainty_dataset/utils/entailment.py
+src/linguistic_uncertainty_dataset/utils/temperature_sample.py
+test.ipynb
+.venv1/

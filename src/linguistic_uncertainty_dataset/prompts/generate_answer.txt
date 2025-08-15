@@ -1,0 +1,9 @@
+Below is an instruction that describes a task. Write a response that appropriately completes the request.
+
+### Instruction:
+You will receive a question. Please provide an answer in no more than two sentences.
+
+### Question:
+{question}
+
+### Response:
