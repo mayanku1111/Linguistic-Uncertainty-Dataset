@@ -12,3 +12,4 @@ src/linguistic_uncertainty_dataset/utils/temperature_sample.py
 test.ipynb
 .venv1/
 simpleqa_experiments/batch_tasks/*
+*.pth
