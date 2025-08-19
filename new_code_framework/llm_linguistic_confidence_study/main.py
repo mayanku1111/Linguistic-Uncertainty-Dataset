@@ -5,7 +5,6 @@ from metrics import MetricEvaluator
 from omegaconf import OmegaConf, DictConfig
 import hydra
 import pandas as pd
-import os
 from datetime import datetime
 import logging
 
@@ -15,13 +14,14 @@ def main(cfg: DictConfig):
     logging.info(OmegaConf.to_yaml(cfg, resolve=True))
     
     # load the dataset
-    qa_data = load_dataset(cfg.dataset)
+    dataset = load_dataset(cfg.dataset.name, cfg.dataset.url, cfg.dataset.dir)
 
     # obtain the responses
     if cfg.eval_only:
         responses_df = pd.read_csv(cfg.responses_path)
     else:
-        confidence_extractor = ConfidenceExtractor(cfg.confidence_extraction_method, cfg.confidence_extraction_method_config, qa_data)
+        confidence_extractor = ConfidenceExtractor(cfg.confidence_extraction_method, dataset)
+        # return a dataframe with the following columns: question, gold_answer, reponse1, reponse2, reponse3, ..., confidence, accuracy
         responses_df = confidence_extractor.generate_responses()
 
     # evaluate the responses

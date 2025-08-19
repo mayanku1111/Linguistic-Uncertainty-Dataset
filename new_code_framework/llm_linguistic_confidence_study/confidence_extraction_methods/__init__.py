@@ -1,29 +1,26 @@
-from .verbal_confidence_extractor import VerbalConfidenceExtractor
-from .numerical_confidence_extractor import NumericalConfidenceExtractor
-
+from .linguistic_confidence import LinguisticConfidenceExtractor
+from .pture import PTrueConfidenceExtractor
+from .semantic_uncertainty import SemanticUncertaintyExtractor
+from .verbal_numerical_confidence import VerbalNumericalConfidenceExtractor
 
 class ConfidenceExtractor:
-    def __init__(self, confidence_extraction_method, qa_dataset):
-        self.confidence_extraction_method = confidence_extraction_method
-        self.extractor = self.get_extractor()
-        self.qa_dataset = qa_dataset
-        
-
-    def get_extractor(self):
-        if self.confidence_extraction_method == "verbal":
-            return VerbalConfidenceExtractor()
-        elif self.confidence_extraction_method == "numerical":
-            return NumericalConfidenceExtractor()
-        else:
-            raise ValueError(f"Invalid confidence extraction method: {self.confidence_extraction_method}")
-        
-    def generate_responses(self):
-        pass
-        
-    def evaluate_responses(self):
-        pass
-        
-    def save_results(self):
-        pass
-        
+    def __init__(self, confidence_extraction_method, dataset, model_name):
+        self.confidence_extractor = self.get_confidence_extractor(confidence_extraction_method)
+        self.dataset = dataset
+        self.model_name = model_name
     
+    def __call__(self):
+        df = self.confidence_extractor(self.dataset, self.model_name)
+        return df
+    
+    def get_confidence_extractor(self, confidence_extraction_method):
+        if confidence_extraction_method == "linguistic_confidence": 
+            return LinguisticConfidenceExtractor(self.dataset, self.model_name)
+        elif confidence_extraction_method == "pture":
+            return PTrueConfidenceExtractor(self.dataset, self.model_name)
+        elif confidence_extraction_method == "semantic_uncertainty":
+            return SemanticUncertaintyExtractor(self.dataset, self.model_name)
+        elif confidence_extraction_method == "verbal_numerical_confidence":
+            return VerbalNumericalConfidenceExtractor(self.dataset, self.model_name)
+        else:
+            raise ValueError(f"Invalid confidence extraction method: {confidence_extraction_method}")
