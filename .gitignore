@@ -9,6 +9,7 @@ src/linguistic_uncertainty_dataset/run.sh
 src/linguistic_uncertainty_dataset/test.py
 src/linguistic_uncertainty_dataset/utils/entailment.py
 src/linguistic_uncertainty_dataset/utils/temperature_sample.py
+src/linguistic_uncertainty_dataset/utils/venv
 test.ipynb
 .venv1/
 simpleqa_experiments/batch_tasks/*
