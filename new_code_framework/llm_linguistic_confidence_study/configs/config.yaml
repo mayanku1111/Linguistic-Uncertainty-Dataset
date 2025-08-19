@@ -1,0 +1,7 @@
+defaults:
+ - model: gpt-5-mini
+ - confidence_extractor: linguistic_confidence_base
+ - dataset: mmlu_pro
+
+seed: 42
+metrics: [acc, ece-15, auorc]
