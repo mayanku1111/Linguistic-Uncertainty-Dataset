@@ -1,19 +1,25 @@
-from openai import OpenAI
+from together import Together
 from omegaconf import DictConfig
 import json
 import os
+import time
 
 OPENAI_SYSTEM_PROMPT = "You are a helpful assistant."
 
-class GPT():
+class TogetherAI():
     def __init__(self, model_cfg: DictConfig):
         self.model_cfg = model_cfg
-        self.model = self.prepare_model(model_cfg)
+        self.tasks = []
 
     def __call__(self, prompts: list[str], task_name: str) -> list[str]:
         batch_job_id = self.prepare_batch_task(prompts, task_name)
-        while self.check_batch_job_status(batch_job_id) != "completed":
-            time.sleep(1)
+        while True:
+            if self.check_batch_job_status(batch_job_id) != "COMPLETED":
+                print("Batch ID: ", batch_job_id, self.check_batch_job_status(batch_job_id))
+                break
+            else:
+                print("Batch ID: ", batch_job_id, self.check_batch_job_status(batch_job_id))
+                time.sleep(60)
         responses = self.retrieve_batch_job_output(batch_job_id)
         return responses
     
@@ -25,8 +31,6 @@ class GPT():
         for idx, prompt in enumerate(prompts):
             task = {
                 "custom_id": task_name + "_" + str(idx),             # Custom ID must be a string
-                "method": "POST",
-                "url": "/v1/chat/completions",
                 "body": {
                     "model": self.model_cfg.name,         # Use gpt-5-mini
                     "messages": [
@@ -42,7 +46,7 @@ class GPT():
                 }
             }
             tasks.append(task)
-
+        self.tasks = tasks
         # Write the tasks to a JSONL file
         with open(f'batch_tasks/{task_name}.jsonl', 'w', encoding='utf-8') as f:
             for t in tasks:
@@ -53,31 +57,29 @@ class GPT():
         # send request to batch grading
         #########################################################
         # Initialize OpenAI client with API key from environment variable
-        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        client = Together(api_key=os.getenv("TOGETHERAI_API_KEY"))
 
         # Upload the batch task file; purpose must be "batch"
-        batch_file = client.files.create(
+        file_resp = client.files.upload(
             file=open(f'batch_tasks/{task_name}.jsonl', 'rb'),
             purpose='batch'
         )
+        file_id = file_resp.id
 
-        # Create the batch job; completion window can be 24h, 48h, etc.
-        batch_job = client.batches.create(
-            input_file_id=batch_file.id,
-            endpoint="/v1/chat/completions",
-            completion_window="24h"
-        )
-        # return batch job id
-        return batch_job.id
+        # Create the batch job 
+        batch = client.batches.create_batch(file_id, endpoint="/v1/chat/completions")
+
+        # return batch id
+        return batch.id
     
     '''
     This function checks the status of a batch job.
     batch_job_id: the id of the batch job
     return: the status of the batch job
     '''
-    def check_batch_job_status(batch_job_id):
-        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        batch_job = client.batches.retrieve(batch_job_id)
+    def check_batch_job_status(self, batch_job_id):
+        client = Together(api_key=os.getenv("TOGETHERAI_API_KEY"))
+        batch_job = client.batches.get_batch(batch_job_id)
         return batch_job.status
 
 
@@ -88,30 +90,33 @@ class GPT():
     return_confidence_score: if True, return the confidence score of the responses (only for verbal_numerical_confidence method)
     return: a list of strings, each string is a response of a simple-qa question, in the same order as the simple-qa questions
     '''
-    def retrieve_batch_job_output(batch_job_id, confidence_method=None, return_confidence_score=False):
-        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        batch_job = client.batches.retrieve(batch_job_id)
-        result_bytes = client.files.content(batch_job.output_file_id).content
-        result_text  = result_bytes.decode('utf-8')
-
-        results = []
-        for line in result_text.strip().split("\n"):
-            entry = json.loads(line)
-            answer = entry["response"]["body"]["choices"][0]["message"]["content"].strip()
-            results.append(answer)
+    def retrieve_batch_job_output(self, batch_job_id):
+        client = Together(api_key=os.getenv("TOGETHERAI_API_KEY"))
+        file_path = f"batch_tasks/tmp_together_{batch_job_id}_batch_output.jsonl"
+        batch_stat = client.batches.get_batch(batch_job_id)
+        if self.check_batch_job_status(batch_job_id) == 'COMPLETED':
+            client.files.retrieve_content(id=batch_stat.output_file_id, output=file_path)
+        responses = []
+        with open(file_path, "r") as f:
+            for line in f:
+                if line.strip():  # skip empty lines
+                    responses.append(json.loads(line))
         
-        if confidence_method == "verbal_numerical_confidence":
-            post_processed_results = []
-            confidence_scores = []
-            for response in results:
-                fixed = re.sub(r'(?<=named the )"(.*)"(?=\.)', r'"\1"', response)
-                fixed = fixed.replace('"Dulcie September Boardroom"', '\\"Dulcie September Boardroom\\"') # TODO: remove this
-                data = json.loads(fixed)
-                post_processed_results.append(data["answer"])
-                confidence_scores.append(data["confidence_score"])
-            if return_confidence_score:
-                return post_processed_results, confidence_scores
+        ordered_responses = []
+        responded_ids = [r["custom_id"] for r in responses]
+        for task in self.tasks:
+            id = task["custom_id"]
+            if id in responded_ids:
+                for r in responses:
+                    if id == r["custom_id"]:
+                        ordered_responses.append(r["response"]["body"]["choices"][0]["message"]["content"].strip())
             else:
-                return post_processed_results
-        else:
-            return results
+                ordered_responses.append(None)
+                
+        return ordered_responses
+
+
+
+        
+        
+        
