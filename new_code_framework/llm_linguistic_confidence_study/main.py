@@ -14,15 +14,15 @@ def main(cfg: DictConfig):
     logging.info(OmegaConf.to_yaml(cfg, resolve=True))
     
     # load the dataset
-    dataset = load_dataset(cfg.dataset.name, cfg.dataset.url, cfg.dataset.dir)
+    dataset_df = load_dataset(cfg.dataset_cfg)
 
     # obtain the responses
-    if cfg.eval_only:
+    if cfg.eval_only:       
         responses_df = pd.read_csv(cfg.responses_path)
     else:
-        confidence_extractor = ConfidenceExtractor(cfg.confidence_extraction_method, dataset)
+        confidence_extractor = ConfidenceExtractor(cfg.confidence_extraction_method_cfg, cfg.dataset_cfg, cfg.model_cfg)
         # return a dataframe with the following columns: question, gold_answer, reponse1, reponse2, reponse3, ..., confidence, accuracy
-        responses_df = confidence_extractor.generate_responses()
+        responses_df = confidence_extractor(dataset_df)
 
     # evaluate the responses
     results_df = pd.DataFrame(columns=cfg.metrics_list)
@@ -33,12 +33,12 @@ def main(cfg: DictConfig):
         
     # save the results, responses and config
     time_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    responses_df.to_csv(f"results/{cfg.dataset}/{cfg.confidence_extraction_method}/{cfg.model}_{time_stamp}_responses.csv", index=False)
-    results_df.to_csv(f"results/{cfg.dataset}/{cfg.confidence_extraction_method}/{cfg.model}_{time_stamp}_results.csv", index=False)
-    OmegaConf.save(cfg, f"results/{cfg.dataset}/{cfg.confidence_extraction_method}/{cfg.model}_{time_stamp}_config.yaml")
-    logging.info(f"Results saved to results/{cfg.dataset}/{cfg.confidence_extraction_method}/{cfg.model}_{time_stamp}_results.csv")
-    logging.info(f"Responses saved to results/{cfg.dataset}/{cfg.confidence_extraction_method}/{cfg.model}_{time_stamp}_responses.csv")
-    logging.info(f"Config saved to results/{cfg.dataset}/{cfg.confidence_extraction_method}/{cfg.model}_{time_stamp}_config.yaml")
+    responses_df.to_csv(f"results/{cfg.dataset_cfg.name}/{cfg.confidence_extraction_method_cfg.name}/{cfg.model_cfg.name}_{time_stamp}_responses.csv", index=False)
+    results_df.to_csv(f"results/{cfg.dataset_cfg.name}/{cfg.confidence_extraction_method_cfg.name}/{cfg.model_cfg.name}_{time_stamp}_results.csv", index=False)
+    OmegaConf.save(cfg, f"results/{cfg.dataset_cfg.name}/{cfg.confidence_extraction_method_cfg.name}/{cfg.model_cfg.name}_{time_stamp}_config.yaml")
+    logging.info(f"Results saved to results/{cfg.dataset_cfg.name}/{cfg.confidence_extraction_method_cfg.name}/{cfg.model_cfg.name}_{time_stamp}_results.csv")
+    logging.info(f"Responses saved to results/{cfg.dataset_cfg.name}/{cfg.confidence_extraction_method_cfg.name}/{cfg.model_cfg.name}_{time_stamp}_responses.csv")
+    logging.info(f"Config saved to results/{cfg.dataset_cfg.name}/{cfg.confidence_extraction_method_cfg.name}/{cfg.model_cfg.name}_{time_stamp}_config.yaml")
 
 if __name__ == "__main__":
     main()

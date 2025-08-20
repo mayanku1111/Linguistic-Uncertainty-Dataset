@@ -2,23 +2,39 @@ import torch
 import torch.nn as nn
 from transformers import AutoModel, AutoTokenizer
 
+
+SIMPLE_QA_EVAL_VANILLA_TEMPLATE = """
+Answer the following question using a succinct (at most one sentence) and full answer.
+
+Question: {question}
+Answer:
+""".strip()
+
+SIMPLE_QA_EVAL_VANILLA_UNCERTAINTY_TEMPLATE = """
+Answer the following question using a succinct (at most one sentence) and full answer. If you are uncertain about your answer to the question, convey this uncertainty linguistically by precisely hedging this answer.
+
+Question: {question}
+Answer:
+""".strip()
+
+
 class LinguisticConfidenceExtractor():
-    def __init__(self, confidence_extraction_method, dataset, model_name):
-        self.confidence_extraction_method = confidence_extraction_method
-        self.dataset = dataset
-        self.model_name = model_name
-        self.confidence_estimator = self.get_confidence_estimator(confidence_extraction_method)
+    def __init__(self, confidence_extraction_method_cfg, dataset_cfg, model_cfg):
+        self.confidence_extraction_method_cfg = confidence_extraction_method_cfg
+        self.dataset_cfg = dataset_cfg
+        self.model_cfg = model_cfg
+        self.confidence_estimator = self.get_confidence_estimator(confidence_extraction_method_cfg.name)
         
-    def __call__(self, dataset, model_name):
+    def __call__(self, dataset_df, model_cfg):
         prompt = self.prepare_prompt()
-        responses = self.generate_responses(prompt, dataset, model_name)
+        responses = self.generate_responses(prompt, dataset_df, model_cfg)
         df = self.confidence_estimate(responses)
         return df
     
     def prepare_prompt(self):
         pass
     
-    def generate_responses(self, prompt, dataset, model_name):
+    def generate_responses(self, prompt, dataset_df, model_cfg):
         pass
     
     def confidence_estimate(self, responses):
@@ -31,11 +47,11 @@ class LinguisticConfidenceExtractor():
             pred_scores = self.confidence_estimator(inputs["input_ids"], inputs["attention_mask"]).squeeze().cpu().numpy()
         return pred_scores
     
-    def get_confidence_estimator(self, confidence_extraction_method):
-        if confidence_extraction_method == "linguistic_confidence":
+    def get_confidence_estimator(self, confidence_extraction_method_name):
+        if confidence_extraction_method_name == "linguistic_confidence":
             return LinguisticConfidenceEstimator()
         else:
-            raise ValueError(f"Invalid confidence extraction method: {confidence_extraction_method}")
+            raise ValueError(f"Invalid confidence extraction method: {confidence_extraction_method_name}")
         
 class LinguisticConfidenceEstimator():
     def __init__(self, model_name='distilroberta-base'):
@@ -77,3 +93,4 @@ if __name__ == "__main__":
         pred_scores = model(inputs["input_ids"], inputs["attention_mask"]).squeeze().cpu().numpy()
 
     print(pred_scores)
+    
