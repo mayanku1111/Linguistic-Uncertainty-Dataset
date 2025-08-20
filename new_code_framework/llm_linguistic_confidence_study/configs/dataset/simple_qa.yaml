@@ -1,3 +1,4 @@
 name: simple_qa
 url: https://huggingface.co/datasets/basicv8vc/SimpleQA/blob/main/simple_qa_test_set.csv
 file_path: datasets/simple_qa_test_set.csv
+grader_model: gpt-5-mini

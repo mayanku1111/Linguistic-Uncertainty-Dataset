@@ -55,20 +55,14 @@ Proposed answer: {response}
 
 
 class LinguisticConfidenceExtractor():
-    def __init__(self, confidence_extraction_method_cfg, dataset_cfg, qa_model_cfg, grader_model_cfg):
+    def __init__(self, confidence_extraction_method_cfg, qa_model_cfg):
         self.confidence_extraction_method_cfg = confidence_extraction_method_cfg
-        self.dataset_cfg = dataset_cfg
         self.qa_model_cfg = qa_model_cfg
-        self.grader_model_cfg = grader_model_cfg
         self.qa_model = self.get_qa_model(self.qa_model_cfg)
-        self.grader_model = self.get_grader_model(self.grader_model_cfg)
         self.confidence_mapper = self.get_confidence_mapper(self.confidence_extraction_method_cfg)
         
     def get_qa_model(self, qa_model_cfg):
         return LLM(qa_model_cfg)
-    
-    def get_grader_model(self, grader_model_cfg):
-        return LLM(grader_model_cfg)
     
     def get_confidence_mapper(self, confidence_extraction_method_cfg):
         if confidence_extraction_method_cfg.mapper_name == "self-trained":
@@ -78,22 +72,22 @@ class LinguisticConfidenceExtractor():
         else:
             raise ValueError(f"Invalid confidence extraction method: {confidence_extraction_method_cfg}")
         
-    def __call__(self, dataset_df):
-        if self.dataset_cfg.name == "simple_qa" or self.dataset_cfg.name == "mini_simple_qa":
-            qa_responses = self.generate_qa_responses(dataset_df, self.confidence_extraction_method_cfg, task_name=f"qa")
+    def __call__(self, dataset):
+        if dataset.name == "simple_qa" or dataset.name == "mini_simple_qa":
+            qa_responses = self.generate_qa_responses(dataset.df, self.confidence_extraction_method_cfg, task_name=f"qa")
             # combine qa_responses and dataset_df
-            response_df = dataset_df.copy()
+            response_df = dataset.df.copy()
             response_df["responses"] = qa_responses
             # confidence estimation
             confidences = self.confidence_mapper(response_df)
             response_df["confidences"] = confidences
             # grade the accuracy of the confidence scores
-            accuracies = self.grader_model(response_df, task_name="grader_accuracy")
+            accuracies = dataset.grade_responses(response_df["responses"])
             response_df["accuracies"] = accuracies
-        elif self.dataset_cfg.name == "mmlu_pro":
+        elif dataset.name == "mmlu_pro":
             pass
         else:
-            raise ValueError(f"Invalid dataset name: {self.dataset_cfg.name}")
+            raise ValueError(f"Invalid dataset name: {dataset.name}")
         # return the response_df
         return response_df
 
