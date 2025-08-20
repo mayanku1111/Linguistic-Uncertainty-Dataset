@@ -3,7 +3,7 @@ from omegaconf import DictConfig
 import json
 import os
 import time
-import re
+from datetime import datetime
 
 OPENAI_SYSTEM_PROMPT = "You are a helpful assistant."
 
@@ -52,7 +52,7 @@ class GPT():
             tasks.append(task)
 
         # Write the tasks to a JSONL file
-        task_file_path = f'batch_tasks/{task_name}.jsonl'
+        task_file_path = f'batch_tasks/{task_name}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.jsonl'
         with open(task_file_path, 'w', encoding='utf-8') as f:
             for t in tasks:
                 f.write(json.dumps(t, ensure_ascii=False) + '\n')

@@ -1,7 +1,10 @@
 import torch
 import torch.nn as nn
 from transformers import AutoModel, AutoTokenizer
-
+from models import LLM
+import pandas as pd
+from omegaconf import DictConfig
+import re
 
 SIMPLE_QA_EVAL_VANILLA_TEMPLATE = """
 Answer the following question using a succinct (at most one sentence) and full answer.
@@ -17,80 +20,149 @@ Question: {question}
 Answer:
 """.strip()
 
+DECISIVENESS_PROMPT = """You will be given a question and a proposed answer. Your task is to extract any assertions made by the proposed answer; for each assertion, you should output a
+decisiveness score: a number in [0,1] representing how likely you think this assertion is to be true, judged solely based on the provided answer. You should pay
+special attention to the usage of any hedging modifiers in the original answer, used to convey uncertainty in the truthfulness of the assertion. If the proposed
+answer punts the question, the extracted assertion should be the empty string and the decisiveness score should be 1.0.
+
+Here are some examples:
+
+Question: criminal minds episode where jj becomes a profiler
+Proposed answer: I think JJ officially becomes a profiler in Criminal Minds season 6, episode 2.
+Extracted assertion: JJ officially becomes a profiler in Criminal Minds season 6, episode 2.
+Decisiveness score: 0.8.
+
+Question: criminal minds episode where jj becomes a profiler
+Proposed answer: JJ officially becomes a profiler in Criminal Minds season 6, in either the first or second episode.
+Extracted assertion: JJ officially becomes a profiler in Criminal Minds season 6, episode 1.
+Decisiveness score: 0.5.
+Extracted assertion: JJ officially becomes a profiler in Criminal Minds season 6, episode 2.
+Decisiveness score: 0.5.
+
+Question: criminal minds episode where jj becomes a profiler
+Proposed answer: I'm not really sure about this, but I think the episode in which JJ officially becomes a profiler in Criminal Minds may be episode 2 in season 6.
+Extracted assertion: JJ officially becomes a profiler in Criminal Minds season 6, episode 2.
+Decisiveness score: 0.6.
+
+Question: criminal minds episode where jj becomes a profiler
+Proposed answer: I don't know which episode you're referring to.
+Extracted assertion:
+Decisiveness score: 1.0
+
+Question: {question}
+Proposed answer: {response}
+""".strip()
+
 
 class LinguisticConfidenceExtractor():
-    def __init__(self, confidence_extraction_method_cfg, dataset_cfg, model_cfg):
+    def __init__(self, confidence_extraction_method_cfg, dataset_cfg, qa_model_cfg, grader_model_cfg):
         self.confidence_extraction_method_cfg = confidence_extraction_method_cfg
         self.dataset_cfg = dataset_cfg
-        self.model_cfg = model_cfg
-        self.confidence_estimator = self.get_confidence_estimator(confidence_extraction_method_cfg.name)
+        self.qa_model_cfg = qa_model_cfg
+        self.grader_model_cfg = grader_model_cfg
+        self.qa_model = self.get_qa_model(self.qa_model_cfg)
+        self.grader_model = self.get_grader_model(self.grader_model_cfg)
+        self.confidence_mapper = self.get_confidence_mapper(self.confidence_extraction_method_cfg)
         
-    def __call__(self, dataset_df, model_cfg):
-        prompt = self.prepare_prompt()
-        responses = self.generate_responses(prompt, dataset_df, model_cfg)
-        df = self.confidence_estimate(responses)
-        return df
+    def get_qa_model(self, qa_model_cfg):
+        return LLM(qa_model_cfg)
     
-    def prepare_prompt(self):
-        pass
+    def get_grader_model(self, grader_model_cfg):
+        return LLM(grader_model_cfg)
     
-    def generate_responses(self, prompt, dataset, model_name):
-        pass
-    
-    def confidence_estimate(self, responses):
-        # responses: list of strings
-        # return a list of confidence scores in [0, 1]
-        inputs = self.tokenizer(responses, return_tensors="pt", truncation=True, padding=True, max_length=128)
-        inputs = {k: v.to(device) for k, v in inputs.items()}
-        self.confidence_estimator.eval()
-        with torch.no_grad():
-            pred_scores = self.confidence_estimator(inputs["input_ids"], inputs["attention_mask"]).squeeze().cpu().numpy()
-        return pred_scores
-    
-    def get_confidence_estimator(self, confidence_extraction_method_name):
-        if confidence_extraction_method_name == "linguistic_confidence":
-            return LinguisticConfidenceEstimator()
+    def get_confidence_mapper(self, confidence_extraction_method_cfg):
+        if confidence_extraction_method_cfg.name == "human_anno_mapping":
+            return LinguisticConfidenceEstimator(confidence_extraction_method_cfg)
+        elif confidence_extraction_method_cfg.name == "decisiveness":
+            return DecisivenessEstimator(confidence_extraction_method_cfg)
         else:
-            raise ValueError(f"Invalid confidence extraction method: {confidence_extraction_method_name}")
+            raise ValueError(f"Invalid confidence extraction method: {confidence_extraction_method_cfg}")
+        
+    def __call__(self, dataset_df):
+        if self.dataset_cfg.name == "simple_qa":
+            # prepare prompts
+            qa_prompt_template = self.prepare_prompt(self.confidence_extraction_method_cfg, dataset_df)
+            qa_prompts = [qa_prompt_template.format(question=row["question"]) for _, row in dataset_df.iterrows()]
+            qa_responses = self.generate_responses(qa_prompts, task_name=f"qa")
+            # combine qa_responses and dataset_df
+            response_df = dataset_df.copy()
+            response_df["responses"] = qa_responses
+            # confidence estimation
+            confidences = self.confidence_mapper(response_df)
+            response_df["confidences"] = confidences
+            # grade the accuracy of the confidence scores
+            accuracies = self.grader_model(response_df, task_name="grader_accuracy")
+            response_df["accuracies"] = accuracies
+        elif self.dataset_cfg.name == "mmlu_pro":
+            pass
+        else:
+            raise ValueError(f"Invalid dataset name: {self.dataset_cfg.name}")
+        # return the response_df
+        return response_df
+    
+    def prepare_prompt(self, confidence_extraction_method_cfg, dataset_df) -> list[str]:
+        if confidence_extraction_method_cfg.name == "linguistic_confidence":
+            if confidence_extraction_method_cfg.template == "vanilla":
+                prompt_template = SIMPLE_QA_EVAL_VANILLA_TEMPLATE
+                return [prompt_template.format(question=row["question"]) for _, row in dataset_df.iterrows()]
+            elif confidence_extraction_method_cfg.template == "vanilla_uncertainty":
+                prompt_template = SIMPLE_QA_EVAL_VANILLA_UNCERTAINTY_TEMPLATE
+                return [prompt_template.format(question=row["question"]) for _, row in dataset_df.iterrows()]
+            else:
+                raise ValueError(f"Invalid confidence extraction method template: {confidence_extraction_method_cfg.template}")
+        else:
+            raise ValueError(f"Invalid confidence extraction method: {confidence_extraction_method_cfg.name}")
+    
+    def generate_responses(self, prompts: list[str], task_name: str) -> list[str]:
+        responses = self.qa_model(prompts, task_name=task_name)
+        # post-process the responses if needed
+        return responses
+
         
 class LinguisticConfidenceEstimator():
-    def __init__(self, model_name='distilroberta-base'):
-        self.encoder = AutoModel.from_pretrained(model_name)
+    def __init__(self, cfg: DictConfig):
+        self.cfg = cfg
+        self.model_name = cfg.model_name
+        self.encoder = AutoModel.from_pretrained(self.model_name)
         self.reg_head = nn.Sequential(
             nn.Linear(self.encoder.config.hidden_size, 1),
             nn.Sigmoid()  # output range in [0, 1]
         )
-        self.load_state_dict(torch.load("tmp/uncertainty_model_human_anno_valid_count_2and1.pth"))
-
-    def __call__(self, input_ids, attention_mask):
-        output = self.encoder(input_ids=input_ids, attention_mask=attention_mask)
+        self.load_state_dict(torch.load(cfg.state_dict_path))
+        
+    def __call__(self, response_df: pd.DataFrame) -> list[float]:
+        tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        inputs = tokenizer(response_df["responses"], return_tensors="pt", truncation=True, padding=True, max_length=128)
+        inputs = {k: v.to(device) for k, v in inputs.items()}
+        output = self.encoder(input_ids=inputs["input_ids"], attention_mask=inputs["attention_mask"])
         cls_hidden = output.last_hidden_state[:, 0]
-        return self.reg_head(cls_hidden).squeeze(-1)
+        confidence_scores = self.reg_head(cls_hidden).squeeze(-1)
+        return confidence_scores
     
+    def load_state_dict(self, state_dict):
+        self.encoder.load_state_dict(state_dict)
     
-if __name__ == "__main__":
-    #########################################################
-    # example
-    #########################################################
+class DecisivenessEstimator():
+    def __init__(self, cfg: DictConfig):
+        self.decisiveness_prompt_template = DECISIVENESS_PROMPT
+        self.model = LLM(cfg.model)
 
-    # === initialize model ===
-    tokenizer = AutoTokenizer.from_pretrained("distilroberta-base")
-    model = LinguisticConfidenceEstimator()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
-    model.load_state_dict(torch.load("tmp/uncertainty_model_human_anno_valid_count_2and1.pth"))
-
-    # === example data ===
-    results = [
-        "I don't have that specific winner memorized — would you like me to look it up now?",
-        "The women's liberal arts college in Cambridge, Massachusetts, was Radcliffe College."
-    ]
-
-    inputs = tokenizer(results, return_tensors="pt", truncation=True, padding=True, max_length=128)
-    inputs = {k: v.to(device) for k, v in inputs.items()}
-    model.eval()
-    with torch.no_grad():
-        pred_scores = model(inputs["input_ids"], inputs["attention_mask"]).squeeze().cpu().numpy()
-
-    print(pred_scores)
+    def __call__(self, dataset_df: pd.DataFrame) -> list[float]:
+        decisiveness_prompts = []
+        for i in range(len(dataset_df)):
+            decisiveness_prompt = self.decisiveness_prompt_template.format(question=dataset_df.iloc[i]["question"], response=dataset_df.iloc[i]["response"])
+            decisiveness_prompts.append(decisiveness_prompt)
+        decisiveness_responses = self.model(decisiveness_prompts, task_name="decisiveness")
+        decisiveness_scores = self.extract_confidence_scores(decisiveness_responses)
+        return decisiveness_scores
+    
+    def extract_confidence_scores(self, decisiveness_responses: list[str]) -> list[float]:
+        # use regex to extract the confidence score from the response
+        # decisiveness_responses: list of strings
+        # return a list of confidence scores in [0, 1]
+        confidence_scores = []
+        for response in decisiveness_responses:
+            confidence_scores.append(float(re.search(r"Decisiveness score: (\d+\.\d+)", response).group(1)))
+        return confidence_scores
     
