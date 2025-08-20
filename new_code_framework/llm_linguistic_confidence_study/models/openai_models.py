@@ -4,6 +4,7 @@ import json
 import os
 import time
 from datetime import datetime
+import logging
 
 OPENAI_SYSTEM_PROMPT = "You are a helpful assistant."
 
@@ -14,13 +15,15 @@ class GPT():
 
     def __call__(self, prompts: list[str], task_name: str) -> list[str]:
         batch_job_id, task_file_path = self.prepare_batch_task_and_submit(prompts, task_name)
+        logging.info(f"Batch job for {task_name} id: {batch_job_id}")
+        logging.info(f"Batch task file path for {task_name}: {task_file_path}")
         while True:
             batch_job = self.check_batch_job_status(batch_job_id)
             if batch_job.status != "completed":
-                print(f"Batch job {batch_job.id} is {batch_job.status}, waiting for 60 seconds...")
+                logging.info(f"Batch job {batch_job.id} for {task_name} is {batch_job.status}, waiting for 60 seconds...")
                 time.sleep(60)
             else:
-                print(f"Batch job {batch_job.id} is completed")
+                logging.info(f"Batch job {batch_job.id} for {task_name} is completed")
                 break
         responses = self.retrieve_batch_job_output(batch_job_id)
         return responses
@@ -56,7 +59,9 @@ class GPT():
         with open(task_file_path, 'w', encoding='utf-8') as f:
             for t in tasks:
                 f.write(json.dumps(t, ensure_ascii=False) + '\n')
-                
+
+        logging.info(f"Batch task file saved to {task_file_path}")
+
         #########################################################
         # send request to batch grading
         #########################################################
@@ -75,6 +80,7 @@ class GPT():
             endpoint="/v1/chat/completions",
             completion_window="24h"
         )
+        logging.info(f"Batch job created: {batch_job.id}")
         # return batch job id and task file path
         return batch_job.id, task_file_path
     

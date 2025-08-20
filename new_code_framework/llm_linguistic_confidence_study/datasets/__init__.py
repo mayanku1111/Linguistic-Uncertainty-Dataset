@@ -118,78 +118,21 @@ class SimpleQADataset():
         #########################################################
         # prepare request for batch evaluation
         #########################################################
-        tasks = []
-        for idx, row in self.df.iterrows():
-            task = {
-                "custom_id": "grader_task_" + str(idx),             # Custom ID must be a string
-                "method": "POST",
-                "url": "/v1/chat/completions",
-                "body": {
-                    "model": self.grader_model.model_name,         # Use gpt-5-mini
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": OPENAI_SYSTEM_PROMPT
-                        },
-                        {
-                            "role": "user",
-                            "content": SIMPLE_QA_GRADER_TEMPLATE.format(question=row["problem"], target=row["answer"], predicted_answer=responses[idx])   # The question content
-                        }
-                    ]
-                }
-            }
-            tasks.append(task)
-
-        # Write the tasks to a JSONL file
-        tasks_jsonl_file = f'batch_tasks/simpleqa_grader_tasks_{datetime.now().strftime("%Y%m%d_%H%M%S")}.jsonl'
-        with open(tasks_jsonl_file, 'w', encoding='utf-8') as f:
-            for t in tasks:
-                f.write(json.dumps(t, ensure_ascii=False) + '\n')
-        
-        #########################################################
-        # send request to batch evaluation
-        #########################################################
-        # Initialize OpenAI client with API key from environment variable
-        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-        # Upload the batch task file; purpose must be "batch"
-        batch_file = client.files.create(
-            file=open(tasks_jsonl_file, 'rb'),
-            purpose='batch'
-        )
-
-        # Create the batch job; completion window can be 24h, 48h, etc.
-        batch_job = client.batches.create(
-            input_file_id=batch_file.id,
-            endpoint="/v1/chat/completions",
-            completion_window="24h"
-        )
-
-        logging.info(f"Simple QA Grader Batch job created: {batch_job.id}")
-        
-        # wait for the batch job to complete
-        while batch_job.status != "completed":
-            time.sleep(60)
-            batch_job = client.batches.retrieve(batch_job.id)
-            logging.info(f"Simple QA Grader Batch job status: {batch_job.status}, waiting for completion...")
-        
-        # get the results
-        result_bytes = client.files.content(batch_job.output_file_id).content
-        result_text  = result_bytes.decode('utf-8')
-
-        grader_results = []
-        for line in result_text.strip().split("\n"):
-            entry = json.loads(line)
-            answer = entry["response"]["body"]["choices"][0]["message"]["content"].strip()
-            grader_results.append(answer)
-        logging.info(f"Simple QA Grader Batch job Finished")
+        prompts = []
+        for idx, response in enumerate(responses):
+            prompts.append(SIMPLE_QA_GRADER_TEMPLATE.format(question=self.df.iloc[idx]["problem"], target=self.df.iloc[idx]["answer"], predicted_answer=response))
+        grader_results = self.grader_model(prompts, task_name="grader_accuracy")
+        if any(grader_result not in ["A", "B", "C"] for grader_result in grader_results):
+            logging.warning("Some grade results are invalid, not in [A, B, C]")
+            exit(1)
 
         result_map = {
             "A": "CORRECT",
             "B": "INCORRECT",
             "C": "NOT_ATTEMPTED"
         }
-        return [result_map[grader_result] for grader_result in grader_results]
+        results_list = [result_map[grader_result] for grader_result in grader_results]
+        return results_list
                 
     
 class MMLUProDataset():
