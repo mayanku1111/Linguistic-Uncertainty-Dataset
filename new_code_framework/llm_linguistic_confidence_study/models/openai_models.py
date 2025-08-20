@@ -2,6 +2,8 @@ from openai import OpenAI
 from omegaconf import DictConfig
 import json
 import os
+import time
+import re
 
 OPENAI_SYSTEM_PROMPT = "You are a helpful assistant."
 
@@ -11,9 +13,15 @@ class GPT():
         self.model = self.prepare_model(model_cfg)
 
     def __call__(self, prompts: list[str], task_name: str) -> list[str]:
-        batch_job_id = self.prepare_batch_task(prompts, task_name)
-        while self.check_batch_job_status(batch_job_id) != "completed":
-            time.sleep(1)
+        batch_job_id, task_file_path = self.prepare_batch_task_and_submit(prompts, task_name)
+        while True:
+            batch_job = self.check_batch_job_status(batch_job_id)
+            if batch_job.status != "completed":
+                print(f"Batch job {batch_job.id} is {batch_job.status}, waiting for 60 seconds...")
+                time.sleep(60)
+            else:
+                print(f"Batch job {batch_job.id} is completed")
+                break
         responses = self.retrieve_batch_job_output(batch_job_id)
         return responses
     
@@ -44,11 +52,11 @@ class GPT():
             tasks.append(task)
 
         # Write the tasks to a JSONL file
-        with open(f'batch_tasks/{task_name}.jsonl', 'w', encoding='utf-8') as f:
+        task_file_path = f'batch_tasks/{task_name}.jsonl'
+        with open(task_file_path, 'w', encoding='utf-8') as f:
             for t in tasks:
                 f.write(json.dumps(t, ensure_ascii=False) + '\n')
-        
-        
+                
         #########################################################
         # send request to batch grading
         #########################################################
@@ -57,7 +65,7 @@ class GPT():
 
         # Upload the batch task file; purpose must be "batch"
         batch_file = client.files.create(
-            file=open(f'batch_tasks/{task_name}.jsonl', 'rb'),
+            file=open(task_file_path, 'rb'),
             purpose='batch'
         )
 
@@ -67,15 +75,15 @@ class GPT():
             endpoint="/v1/chat/completions",
             completion_window="24h"
         )
-        # return batch job id
-        return batch_job.id
+        # return batch job id and task file path
+        return batch_job.id, task_file_path
     
     '''
     This function checks the status of a batch job.
     batch_job_id: the id of the batch job
     return: the status of the batch job
     '''
-    def check_batch_job_status(batch_job_id):
+    def check_batch_job_status(self, batch_job_id: str) -> str:
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         batch_job = client.batches.retrieve(batch_job_id)
         return batch_job.status
@@ -84,11 +92,9 @@ class GPT():
     '''
     This function retrieves the output file of a batch job.
     batch_job_id: the id of the batch job
-    confidence_method: the method of confidence score, if None, return the raw responses
-    return_confidence_score: if True, return the confidence score of the responses (only for verbal_numerical_confidence method)
     return: a list of strings, each string is a response of a simple-qa question, in the same order as the simple-qa questions
     '''
-    def retrieve_batch_job_output(batch_job_id, confidence_method=None, return_confidence_score=False):
+    def retrieve_batch_job_output(self, batch_job_id: str) -> list[str]:
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         batch_job = client.batches.retrieve(batch_job_id)
         result_bytes = client.files.content(batch_job.output_file_id).content
@@ -99,19 +105,5 @@ class GPT():
             entry = json.loads(line)
             answer = entry["response"]["body"]["choices"][0]["message"]["content"].strip()
             results.append(answer)
-        
-        if confidence_method == "verbal_numerical_confidence":
-            post_processed_results = []
-            confidence_scores = []
-            for response in results:
-                fixed = re.sub(r'(?<=named the )"(.*)"(?=\.)', r'"\1"', response)
-                fixed = fixed.replace('"Dulcie September Boardroom"', '\\"Dulcie September Boardroom\\"') # TODO: remove this
-                data = json.loads(fixed)
-                post_processed_results.append(data["answer"])
-                confidence_scores.append(data["confidence_score"])
-            if return_confidence_score:
-                return post_processed_results, confidence_scores
-            else:
-                return post_processed_results
-        else:
-            return results
+            
+        return results
