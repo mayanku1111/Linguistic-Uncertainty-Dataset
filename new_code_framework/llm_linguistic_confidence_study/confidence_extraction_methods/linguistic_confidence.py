@@ -34,7 +34,7 @@ class LinguisticConfidenceExtractor():
     def prepare_prompt(self):
         pass
     
-    def generate_responses(self, prompt, dataset_df, model_cfg):
+    def generate_responses(self, prompt, dataset, model_name):
         pass
     
     def confidence_estimate(self, responses):
