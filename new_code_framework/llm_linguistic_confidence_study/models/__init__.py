@@ -1,4 +1,5 @@
 from omegaconf import DictConfig
+from .openai_models import GPT
 
 class LLM:
     def __init__(self, model_cfg: DictConfig):
@@ -9,7 +10,7 @@ class LLM:
         responses = self.model(prompts, **kwargs)
         return responses
 
-    def prepare_model(self, model_cfg: DictConfig) -> Any:
+    def prepare_model(self, model_cfg: DictConfig):
         if model_cfg.name == "gpt-5-mini":
             return GPT(model_cfg)
         else:

@@ -71,19 +71,16 @@ class LinguisticConfidenceExtractor():
         return LLM(grader_model_cfg)
     
     def get_confidence_mapper(self, confidence_extraction_method_cfg):
-        if confidence_extraction_method_cfg.name == "human_anno_mapping":
+        if confidence_extraction_method_cfg.mapper_name == "self-trained":
             return LinguisticConfidenceEstimator(confidence_extraction_method_cfg)
-        elif confidence_extraction_method_cfg.name == "decisiveness":
+        elif confidence_extraction_method_cfg.mapper_name == "decisiveness":
             return DecisivenessEstimator(confidence_extraction_method_cfg)
         else:
             raise ValueError(f"Invalid confidence extraction method: {confidence_extraction_method_cfg}")
         
     def __call__(self, dataset_df):
-        if self.dataset_cfg.name == "simple_qa":
-            # prepare prompts
-            qa_prompt_template = self.prepare_prompt(self.confidence_extraction_method_cfg, dataset_df)
-            qa_prompts = [qa_prompt_template.format(question=row["question"]) for _, row in dataset_df.iterrows()]
-            qa_responses = self.generate_responses(qa_prompts, task_name=f"qa")
+        if self.dataset_cfg.name == "simple_qa" or self.dataset_cfg.name == "mini_simple_qa":
+            qa_responses = self.generate_qa_responses(dataset_df, self.confidence_extraction_method_cfg, task_name=f"qa")
             # combine qa_responses and dataset_df
             response_df = dataset_df.copy()
             response_df["responses"] = qa_responses
@@ -99,22 +96,20 @@ class LinguisticConfidenceExtractor():
             raise ValueError(f"Invalid dataset name: {self.dataset_cfg.name}")
         # return the response_df
         return response_df
-    
-    def prepare_prompt(self, confidence_extraction_method_cfg, dataset_df) -> list[str]:
-        if confidence_extraction_method_cfg.name == "linguistic_confidence":
-            if confidence_extraction_method_cfg.template == "vanilla":
-                prompt_template = SIMPLE_QA_EVAL_VANILLA_TEMPLATE
-                return [prompt_template.format(question=row["question"]) for _, row in dataset_df.iterrows()]
-            elif confidence_extraction_method_cfg.template == "vanilla_uncertainty":
-                prompt_template = SIMPLE_QA_EVAL_VANILLA_UNCERTAINTY_TEMPLATE
-                return [prompt_template.format(question=row["question"]) for _, row in dataset_df.iterrows()]
-            else:
-                raise ValueError(f"Invalid confidence extraction method template: {confidence_extraction_method_cfg.template}")
+
+
+    def generate_qa_responses(self, dataset_df: pd.DataFrame, confidence_extraction_method_cfg: DictConfig, task_name: str) -> list[str]:
+        # prepare prompts
+        if confidence_extraction_method_cfg.qa_template == "vanilla":
+            prompt_template = SIMPLE_QA_EVAL_VANILLA_TEMPLATE
+            qa_prompts = [prompt_template.format(question=row["problem"]) for _, row in dataset_df.iterrows()]
+        elif confidence_extraction_method_cfg.qa_template == "vanilla_uncertainty":
+            prompt_template = SIMPLE_QA_EVAL_VANILLA_UNCERTAINTY_TEMPLATE
+            qa_prompts = [prompt_template.format(question=row["problem"]) for _, row in dataset_df.iterrows()]
         else:
-            raise ValueError(f"Invalid confidence extraction method: {confidence_extraction_method_cfg.name}")
-    
-    def generate_responses(self, prompts: list[str], task_name: str) -> list[str]:
-        responses = self.qa_model(prompts, task_name=task_name)
+            raise ValueError(f"Invalid qa template: {confidence_extraction_method_cfg.qa_template}")
+        # generate responses
+        responses = self.qa_model(qa_prompts, task_name=task_name)
         # post-process the responses if needed
         return responses
 

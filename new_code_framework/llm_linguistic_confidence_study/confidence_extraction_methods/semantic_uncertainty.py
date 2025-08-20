@@ -33,7 +33,6 @@ class SemanticUncertaintyExtractor():
             for i in range(sample_times):
                 df.at[idx, f"response{i+1}"] = responses[i]
             df[f"response{idx+1}"] = responses[idx]["content"]
-            df[f"prob{idx+1}"] = responses[idx]["logits"]
         return df
 
     # def generate_single_response(self, texts, model_name, sample_times):
@@ -114,6 +113,7 @@ class SemanticUncertaintyExtractor():
                     df.at[idx, f"cluster{i+1}"] = total_clusters
                     responses[now_response] = total_clusters
                     clusters[responses[response]] = [i]
+                    
             semantic_ids = []
             flag = True
             for i in range(sample_times):

@@ -1,7 +1,10 @@
 defaults:
- - model: gpt-5-mini
+ - qa_model: gpt-5-mini
+ - grader_model: gpt-5-mini
  - confidence_extractor: linguistic_confidence_base
- - dataset: simple_qa
+ - dataset: mini_simple_qa
 
 seed: 42
 metrics: [acc, ece-15, auorc]
+eval_only: false
+responses_path: null
