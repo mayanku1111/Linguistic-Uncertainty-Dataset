@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from sympy.logic.boolalg import false
 import tqdm
-from models import *
+from ..models import LLM
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
 import torch.nn.functional as F

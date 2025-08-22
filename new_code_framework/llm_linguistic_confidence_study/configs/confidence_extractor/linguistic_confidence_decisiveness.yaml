@@ -1,4 +1,4 @@
 name: linguistic_confidence
 model_name: distilroberta-base
-state_dict_path: new_code_framework/llm_linguistic_confidence_study/pretrained_weights/uncertainty_model_human_anno_valid_count_2and1.pth
+state_dict_path: llm_linguistic_confidence_study/pretrained_weights/uncertainty_model_human_anno_valid_count_2and1.pth
 mapper_name: decisiveness

@@ -25,7 +25,7 @@ class GPT():
                     logging.info(f"Batch job {batch_job.id} for {task_name} is completed")
                     break
         else:
-            logging.info(f"Batch job {batch_job_id} is predefine, download the output file...")
+            logging.info(f"Batch job {batch_job_id} is runned before, download the output file now...")
 
         # retrieve batch job output
         responses = self.retrieve_batch_job_output(batch_job_id)

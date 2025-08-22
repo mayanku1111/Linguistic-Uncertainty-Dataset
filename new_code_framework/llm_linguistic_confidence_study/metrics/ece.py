@@ -9,11 +9,11 @@ class ECE:
     def evaluate(self, responses_df):
         if self.metric_cfg.format == "simpleqa_like":
             if self.metric_cfg.exclude_not_attempted:
-                filtered_responses_df = responses_df[responses_df["accuracy"] != "NOT_ATTEMPTED"]
-                accuracies = (filtered_responses_df["accuracy"] == "CORRECT").astype(int).to_numpy()
+                filtered_responses_df = responses_df[responses_df["accuracies"] != "NOT_ATTEMPTED"]
+                accuracies = (filtered_responses_df["accuracies"] == "CORRECT").astype(int).to_numpy()
                 confidences = filtered_responses_df["confidences"].to_numpy()
             else:
-                accuracies = (responses_df["accuracy"] == "CORRECT").astype(int).to_numpy()
+                accuracies = (responses_df["accuracies"] == "CORRECT").astype(int).to_numpy()
                 confidences = responses_df["confidences"].to_numpy()
             ece = self.compute_ece(accuracies, confidences)
             return ece

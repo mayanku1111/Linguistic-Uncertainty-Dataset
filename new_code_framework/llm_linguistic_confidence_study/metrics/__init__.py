@@ -11,7 +11,7 @@ class MetricEvaluator:
 
     def evaluate(self, responses_df):
         # return the float value of the metric
-        return self.metric_evaluator.evaluate(responses_df, self.dataset)
+        return self.metric_evaluator.evaluate(responses_df)
 
     def get_metric_evaluator(self, metric_cfg: DictConfig):
         if metric_cfg.name == "acc":

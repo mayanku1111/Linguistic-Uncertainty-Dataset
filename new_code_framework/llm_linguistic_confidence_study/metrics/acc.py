@@ -6,9 +6,9 @@ class Accuracy:
 
     def evaluate(self, responses_df):
         if self.metric_cfg.format == "simpleqa_like":
-            correct_count = (responses_df["accuracy"] == "CORRECT").sum()
-            incorrect_count = (responses_df["accuracy"] == "INCORRECT").sum()
-            not_attempted_count = (responses_df["accuracy"] == "NOT_ATTEMPTED").sum()
+            correct_count = (responses_df["accuracies"] == "CORRECT").sum()
+            incorrect_count = (responses_df["accuracies"] == "INCORRECT").sum()
+            not_attempted_count = (responses_df["accuracies"] == "NOT_ATTEMPTED").sum()
             if self.metric_cfg.exclude_not_attempted:
                 accuracy = correct_count / (correct_count + incorrect_count)
             else:

@@ -3,4 +3,4 @@ defaults:
 
 name: mini_simple_qa
 url: None
-file_path: new_code_framework/llm_linguistic_confidence_study/datasets/mini_simple_qa_test_set.csv
+file_path: llm_linguistic_confidence_study/datasets/mini_simple_qa_test_set.csv

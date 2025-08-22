@@ -1,6 +1,6 @@
 import pandas as pd
 from omegaconf import DictConfig
-from models import LLM
+from ..models import LLM
 import logging
 
 OPENAI_SYSTEM_PROMPT = "You are a helpful assistant."

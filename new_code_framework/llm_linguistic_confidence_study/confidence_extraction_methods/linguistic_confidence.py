@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from transformers import AutoModel, AutoTokenizer
-from models import LLM
+from ..models import LLM
 import pandas as pd
 from omegaconf import DictConfig
 import re
