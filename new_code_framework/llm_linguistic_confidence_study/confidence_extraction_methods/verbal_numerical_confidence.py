@@ -2,13 +2,15 @@ import pandas as pd
 import re
 import os
 
-SIMPLE_QA_VERBAL_NUMERICAL_CONFIDENCE_QA_PROMPT = """
-Answer the following question using a succinct (at most one sentence) and full answer, and provide a confidence score between 0 and 100 at the end of your answer in the following JSON format:
+SIMPLE_QA_EVAL_VERBAL_NUMERICAL_CONFIDENCE_TEMPLATE = """
+Answer the following question using a succinct (at most one sentence) and full answer.
+Here is the question:
+{question}
+Please provide a confidence score between 0 and 100 at the end of your answer in the following JSON format:
 {
 "answer": "Your answer here",
 "confidence_score": number
 }
-{question}
 """.strip()
 
 SIMPLE_QA_GRADER_TEMPLATE = """
