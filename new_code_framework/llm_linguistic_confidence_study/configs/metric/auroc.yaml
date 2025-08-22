@@ -1,4 +1,0 @@
-_target_: metrics.auroc
-name: auroc
-format: simpleqa_like
-exclude_not_attempted: true

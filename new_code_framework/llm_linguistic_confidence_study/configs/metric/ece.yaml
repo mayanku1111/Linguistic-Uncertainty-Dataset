@@ -1,5 +1,0 @@
-_target_: metrics.ECE
-name: ece
-n_bins: 15
-format: simpleqa_like
-exclude_not_attempted: true

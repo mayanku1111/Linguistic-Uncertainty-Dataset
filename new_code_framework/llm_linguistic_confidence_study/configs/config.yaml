@@ -2,9 +2,7 @@ defaults:
  - qa_model: gpt-5-mini
  - confidence_extractor: linguistic_confidence_base
  - dataset: simple_qa
- - metric@metrics: acc
- - metric@metrics: auroc
- - metric@metrics: ece
+ - metrics: default
 
 seed: 42
 eval_only: false
