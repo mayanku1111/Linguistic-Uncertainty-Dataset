@@ -1,3 +1,0 @@
-[submodule "simpleqa_experiments/semantic_uncertainty"]
-	path = simpleqa_experiments/semantic_uncertainty
-	url = https://github.com/jlko/semantic_uncertainty.git
