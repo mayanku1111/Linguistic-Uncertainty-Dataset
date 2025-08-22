@@ -99,12 +99,11 @@ class LinguisticConfidenceExtractor():
         # prepare prompts
         if confidence_extraction_method_cfg.qa_template == "vanilla":
             prompt_template = SIMPLE_QA_EVAL_VANILLA_TEMPLATE
-            qa_prompts = [prompt_template.format(question=row["problem"]) for _, row in dataset_df.iterrows()]
         elif confidence_extraction_method_cfg.qa_template == "vanilla_uncertainty":
             prompt_template = SIMPLE_QA_EVAL_VANILLA_UNCERTAINTY_TEMPLATE
-            qa_prompts = [prompt_template.format(question=row["problem"]) for _, row in dataset_df.iterrows()]
         else:
             raise ValueError(f"Invalid qa template: {confidence_extraction_method_cfg.qa_template}")
+        qa_prompts = [prompt_template.format(question=row["problem"]) for _, row in dataset_df.iterrows()]
         # generate responses
         responses = self.qa_model(qa_prompts, task_name=task_name, batch_job_id=qa_batch_job_id)
         # post-process the responses if needed

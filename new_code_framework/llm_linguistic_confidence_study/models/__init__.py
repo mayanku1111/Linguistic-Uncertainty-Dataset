@@ -11,7 +11,7 @@ class LLM:
         return responses
 
     def prepare_model(self, model_cfg: DictConfig):
-        if model_cfg.name == "gpt-5-mini":
+        if model_cfg.name == "gpt-5-mini" or model_cfg.name == "gpt-5":
             return GPT(model_cfg)
         else:
             raise ValueError(f"Invalid model name: {model_cfg.name}")

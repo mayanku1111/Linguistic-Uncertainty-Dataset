@@ -97,7 +97,10 @@ Answer:
 """.strip()
 
 SIMPLE_QA_EVAL_VERBAL_NUMERICAL_CONFIDENCE_TEMPLATE = """
-Answer the following question using a succinct (at most one sentence) and full answer, and provide a confidence score between 0 and 100 at the end of your answer in the following JSON format:
+Answer the following question using a succinct (at most one sentence) and full answer.
+Here is the question:
+{question}
+Please provide a confidence score between 0 and 100 at the end of your answer in the following JSON format:
 {
 "answer": "Your answer here",
 "confidence_score": number

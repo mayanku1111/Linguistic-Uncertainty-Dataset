@@ -16,13 +16,10 @@ def main(cfg: DictConfig):
     # load the dataset
     dataset = load_dataset(cfg.dataset)
 
-    # obtain the responses
-    if cfg.eval_only:       
-        responses_df = pd.read_csv(cfg.responses_path)
-    else:
-        confidence_extractor = ConfidenceExtractor(cfg.confidence_extractor, cfg.qa_model)
-        # return a dataframe with the following columns: question, gold_answer, reponse1, reponse2, reponse3, ..., confidence, accuracy
-        responses_df = confidence_extractor(dataset, cfg.qa_batch_id, cfg.grader_batch_id)
+
+    confidence_extractor = ConfidenceExtractor(cfg.confidence_extractor, cfg.qa_model)
+    # return a dataframe with the following columns: question, gold_answer, reponse1, reponse2, reponse3, ..., confidence, accuracy
+    responses_df = confidence_extractor(dataset, cfg.qa_batch_id, cfg.grader_batch_id)
 
     # evaluate the responses
     for metric_name in cfg.metrics:
