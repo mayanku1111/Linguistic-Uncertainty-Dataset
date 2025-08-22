@@ -4,6 +4,10 @@ defaults:
  - dataset: simple_qa
  - metrics: default
 
+hydra:
+  run:
+    dir: llm_linguistic_confidence_study/results/${dataset.name}/${qa_model.name}/${confidence_extractor.name}/${now:%Y-%m-%d_%H-%M-%S}
+
 seed: 42
 eval_only: false
 responses_path: null

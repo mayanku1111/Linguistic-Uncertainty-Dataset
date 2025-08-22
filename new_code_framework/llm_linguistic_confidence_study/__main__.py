@@ -8,7 +8,7 @@ import logging
 import os
 import shutil
 from hydra.core.hydra_config import HydraConfig
-
+import pandas as pd
 
 @hydra.main(config_path="configs", config_name="config", version_base=None)
 def main(cfg: DictConfig):
@@ -23,24 +23,19 @@ def main(cfg: DictConfig):
     responses_df = confidence_extractor(dataset, cfg.qa_batch_id, cfg.grader_batch_id)
 
     # evaluate the responses
+    results = pd.DataFrame()
     for name, metric_cfg in cfg.metrics.items():
         metric_evaluator = MetricEvaluator(metric_cfg, dataset)
         score = metric_evaluator.evaluate(responses_df)
         logging.info(f"{metric_cfg}: {score}")
+        results = pd.concat([results, pd.DataFrame({"metric": [OmegaConf.to_yaml(metric_cfg, resolve=True).replace("\n", "; ")], "score": [score]})])
         
     # save the results, responses and config
-    save_dir = f"llm_linguistic_confidence_study/results/{cfg.dataset.name}/{cfg.confidence_extractor.name}"
-    time_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    os.makedirs(save_dir, exist_ok=True)
-    responses_df.to_csv(os.path.join(save_dir, f"{cfg.qa_model.name}_{time_stamp}_responses.csv"), index=False)
-    OmegaConf.save(cfg, os.path.join(save_dir, f"{cfg.qa_model.name}_{time_stamp}_config.yaml"))
+    save_dir = HydraConfig.get().runtime.output_dir 
+    responses_df.to_csv(os.path.join(save_dir, "responses.csv"), index=False)
+    results.to_csv(os.path.join(save_dir, "results.csv"), index=False)
+    OmegaConf.save(cfg, os.path.join(save_dir, "config.yaml"))
     logging.info(f"Outputs saved to {save_dir}")
-    
-    # copy Hydra main.log into results folder
-    output_dir = HydraConfig.get().runtime.output_dir
-    hydra_log_path = os.path.join(output_dir, "main.log")
-    dst_log_path = os.path.join(save_dir, f"{cfg.qa_model.name}_{time_stamp}_main.log")
-    shutil.copy(hydra_log_path, dst_log_path)
 
 if __name__ == "__main__":
     main()
