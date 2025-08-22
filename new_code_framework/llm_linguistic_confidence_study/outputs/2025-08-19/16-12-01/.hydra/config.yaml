@@ -1,8 +1,0 @@
-model:
-  name: gpt-5-mini
-confidence_extractor:
-  base_model: null
-dataset:
-  name: simple_qa
-  url: https://huggingface.co/datasets/basicv8vc/SimpleQA/blob/main/simple_qa_test_set.csv
-seed: 42

@@ -120,15 +120,35 @@ class LinguisticConfidenceEstimator(nn.Module):
             nn.Sigmoid()  # output range in [0, 1]
         )
         
-    def __call__(self, response_df: pd.DataFrame) -> list[float]:
+    def __call__(self, response_df: pd.DataFrame, batch_size: int = 32) -> list[float]:
         tokenizer = AutoTokenizer.from_pretrained(self.cfg.model_name)
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        inputs = tokenizer(response_df["responses"].tolist(), return_tensors="pt", truncation=True, padding=True, max_length=128)
-        inputs = {k: v.to(device) for k, v in inputs.items()}
-        output = self.encoder(input_ids=inputs["input_ids"], attention_mask=inputs["attention_mask"])
-        cls_hidden = output.last_hidden_state[:, 0]
-        confidence_scores = self.reg_head(cls_hidden).squeeze(-1).detach().cpu().numpy()
-        return confidence_scores
+
+        responses = response_df["responses"].tolist()
+        all_confidences = []
+
+        for i in range(0, len(responses), batch_size):
+            batch_responses = responses[i:i + batch_size]
+
+            inputs = tokenizer(
+                batch_responses,
+                return_tensors="pt",
+                truncation=True,
+                padding=True,
+                max_length=128
+            )
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+
+            with torch.no_grad():
+                output = self.encoder(
+                    input_ids=inputs["input_ids"],
+                    attention_mask=inputs["attention_mask"]
+                )
+                cls_hidden = output.last_hidden_state[:, 0]
+                confidence_scores = self.reg_head(cls_hidden).squeeze(-1).detach().cpu().numpy()
+                all_confidences.extend(confidence_scores.tolist())
+
+        return all_confidences
     
 class DecisivenessEstimator():
     def __init__(self, cfg: DictConfig):

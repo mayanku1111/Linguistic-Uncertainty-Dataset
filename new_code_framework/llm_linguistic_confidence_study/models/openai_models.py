@@ -15,19 +15,18 @@ class GPT():
     def __call__(self, prompts: list[str], task_name: str, batch_job_id: str = None) -> list[str]:
         if batch_job_id is None:
             batch_job_id, task_file_path = self.prepare_batch_task_and_submit(prompts, task_name)
-            logging.info(f"Batch task file path for {task_name}: {task_file_path}")
-        logging.info(f"Batch job for {task_name} id: {batch_job_id}")
-        
-        # check batch job status
-        while True:
-            batch_job = self.check_batch_job(batch_job_id)
-            if batch_job.status != "completed":
-                logging.info(f"Batch job {batch_job.id} for {task_name} is {batch_job.status}, waiting for 60 seconds...")
-                time.sleep(60)
-            else:
-                logging.info(f"Batch job {batch_job.id} for {task_name} is completed")
-                break
-        
+            # check batch job status
+            while True:
+                batch_job = self.check_batch_job(batch_job_id)
+                if batch_job.status != "completed":
+                    logging.info(f"Batch job {batch_job.id} for {task_name} is {batch_job.status}, waiting for 60 seconds...")
+                    time.sleep(60)
+                else:
+                    logging.info(f"Batch job {batch_job.id} for {task_name} is completed")
+                    break
+        else:
+            logging.info(f"Batch job {batch_job_id} is predefine, download the output file...")
+
         # retrieve batch job output
         responses = self.retrieve_batch_job_output(batch_job_id)
         return responses
