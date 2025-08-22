@@ -57,9 +57,6 @@ def main(args):
 
     with open(args.train_set_path, "rb") as f:
         train_set = pickle.load(f)  # load linguistic confidence llm annotation data
-    for key, value in train_set[0].items():
-        train_set[key] = value/100
-        break
         
     dataset = UncertaintyDataset(train_set, tokenizer)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
@@ -72,18 +69,12 @@ def main(args):
     test_set_df['annotation_mean'] = test_set_df['annotation_mean'] / 100
     test_sentences = test_set_df['uncertainty_expression'].tolist()
 
-    # test_sentences = pd.read_csv("/home/linwei/Linguistic-Uncertainty-Dataset/new_code_framework/llm_linguistic_confidence_study/results/simple_qa/gpt-5-mini/linguistic_confidence/2025-08-22_16-41-21/responses.csv")["responses"].tolist()
 
     test_inputs = tokenizer(test_sentences, return_tensors="pt", truncation=True, padding=True, max_length=args.max_len)
     test_inputs = {k: v.to(device) for k, v in test_inputs.items()}
 
     best_test_loss = float('inf')
     
-    # model.reg_head.load_state_dict(torch.load("/home/linwei/Linguistic-Uncertainty-Dataset/new_code_framework/benchmark_mappers/mapper_weights/llm_anno_trained_reg_head.pth"))
-    # with torch.no_grad():
-    #     pred_scores = model(test_inputs["input_ids"], test_inputs["attention_mask"]).squeeze().cpu().numpy()
-        
-    # print(min(pred_scores), max(pred_scores), np.mean(pred_scores))
 
     for param in model.encoder.parameters():
         param.requires_grad = False
@@ -130,7 +121,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_name", type=str, default="distilroberta-base", help="model name")
     parser.add_argument("--max_len", type=int, default=128, help="max length of input text")
     parser.add_argument("--batch_size", type=int, default=16, help="batch size")
-    parser.add_argument("--epochs", type=int, default=15, help="number of epochs")
+    parser.add_argument("--epochs", type=int, default=100, help="number of epochs")
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
     parser.add_argument("--train_set_path", type=str, default="train_mapper/datasets/linguistic_confidence_human_anno_training_set.pkl", help="training set path")
     parser.add_argument("--test_set_path", type=str, default="train_mapper/datasets/linguistic_confidence_benchmark.csv", help="test set path")
