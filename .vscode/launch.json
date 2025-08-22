@@ -8,11 +8,12 @@
             "name": "Python Debugger: main.py",
             "type": "debugpy",
             "request": "launch",
-            "program": "new_code_framework/llm_linguistic_confidence_study/main.py",
-            "console": "integratedTerminal"
+            "module": "llm_linguistic_confidence_study",
+            "console": "integratedTerminal",
+            "cwd": "/home/linwei/Linguistic-Uncertainty-Dataset/new_code_framework",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "1"
+            }
         }
-    ],
-    "env": {
-        "CUDA_VISIBLE_DEVICES": "1"
-    }
+    ]
 }

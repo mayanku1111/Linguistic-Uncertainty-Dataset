@@ -85,7 +85,7 @@ class LinguisticConfidenceExtractor():
             confidences = self.confidence_mapper(response_df)
             response_df["confidences"] = confidences
             # grade the accuracy of the confidence scores
-            accuracies = dataset.grade_responses(response_df["responses"], grader_batch_job_id=grader_batch_job_id)
+            accuracies = dataset.grade_responses(response_df["responses"], grader_batch_job_id=grader_batch_job_id, task_name=f"simple_qa_lc_grader")
             response_df["accuracies"] = accuracies
         elif dataset.name == "mmlu_pro":
             pass

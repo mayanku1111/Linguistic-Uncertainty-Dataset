@@ -104,7 +104,7 @@ class SimpleQADataset():
     def get_dataset(self):
         return self.df
     
-    def grade_responses(self, responses: list[str], grader_batch_job_id: str = None) -> list[str]:
+    def grade_responses(self, responses: list[str], grader_batch_job_id: str = None, task_name: str = None) -> list[str]:
         # return correct, incorrect, or not attempted
         # responses is a list of strings, each string is a response to a question, in the same order as the questions in df
         # return a list of strings, each string is the grade for the corresponding response
@@ -115,7 +115,7 @@ class SimpleQADataset():
         prompts = []
         for idx, response in enumerate(responses):
             prompts.append(SIMPLE_QA_GRADER_TEMPLATE.format(question=self.df.iloc[idx]["problem"], target=self.df.iloc[idx]["answer"], predicted_answer=response))
-        grader_results = self.grader_model(prompts, task_name="simple_qa_grader", batch_job_id=grader_batch_job_id)
+        grader_results = self.grader_model(prompts, task_name=task_name, batch_job_id=grader_batch_job_id)
         if any(grader_result not in ["A", "B", "C"] for grader_result in grader_results):
             logging.warning("Some grade results are invalid, not in [A, B, C]")
             exit(1)
