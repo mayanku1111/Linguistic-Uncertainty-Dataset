@@ -1,10 +1,8 @@
-import pandas as pd
-from confidence_extraction_methods import ConfidenceExtractor
-from datasets import load_dataset
-from metrics import MetricEvaluator
+from .confidence_extraction_methods import ConfidenceExtractor
+from .datasets import load_dataset
+from .metrics import MetricEvaluator
 from omegaconf import OmegaConf, DictConfig
 import hydra
-import pandas as pd
 from datetime import datetime
 import logging
 
@@ -15,17 +13,17 @@ def main(cfg: DictConfig):
     
     # load the dataset
     dataset = load_dataset(cfg.dataset)
-
+    
 
     confidence_extractor = ConfidenceExtractor(cfg.confidence_extractor, cfg.qa_model)
     # return a dataframe with the following columns: question, gold_answer, reponse1, reponse2, reponse3, ..., confidence, accuracy
     responses_df = confidence_extractor(dataset, cfg.qa_batch_id, cfg.grader_batch_id)
 
     # evaluate the responses
-    for metric_name in cfg.metrics:
-        metric_evaluator = MetricEvaluator(metric_name)
+    for name, metric_cfg in cfg.metrics.items():
+        metric_evaluator = MetricEvaluator(metric_cfg, dataset)
         score = metric_evaluator.evaluate(responses_df)
-        logging.info(f"{metric_name}: {score}")
+        logging.info(f"{metric_cfg}: {score}")
         
     # save the results, responses and config
     time_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")

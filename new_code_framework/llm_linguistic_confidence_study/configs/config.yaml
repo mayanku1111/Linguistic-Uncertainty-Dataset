@@ -2,9 +2,11 @@ defaults:
  - qa_model: gpt-5-mini
  - confidence_extractor: linguistic_confidence_base
  - dataset: simple_qa
+ - metric@metrics: acc
+ - metric@metrics: auroc
+ - metric@metrics: ece
 
 seed: 42
-metrics: [acc, ece-15, auorc]
 eval_only: false
 responses_path: null
 qa_batch_id: batch_689da7dd35708190a6d0ed4012152e50

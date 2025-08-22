@@ -1,7 +1,19 @@
+from omegaconf import DictConfig
+
 class Accuracy:
-    def __init__(self):
-        pass
+    def __init__(self, metric_cfg: DictConfig):
+        self.metric_cfg = metric_cfg
 
     def evaluate(self, responses_df):
-        # responses_df contains column accuracy, which is a 0/1 value
-        return responses_df["accuracy"].mean()
+        if self.metric_cfg.format == "simpleqa_like":
+            correct_count = (responses_df["accuracy"] == "CORRECT").sum()
+            incorrect_count = (responses_df["accuracy"] == "INCORRECT").sum()
+            not_attempted_count = (responses_df["accuracy"] == "NOT_ATTEMPTED").sum()
+            if self.metric_cfg.exclude_not_attempted:
+                accuracy = correct_count / (correct_count + incorrect_count)
+            else:
+                accuracy = (correct_count + incorrect_count) / (correct_count + incorrect_count + not_attempted_count)
+            return accuracy
+        else:
+            raise ValueError(f"Invalid format: {self.metric_cfg.format}")
+    
