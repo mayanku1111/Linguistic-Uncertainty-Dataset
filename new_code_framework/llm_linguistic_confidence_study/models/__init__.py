@@ -6,8 +6,8 @@ class LLM:
         self.model_cfg = model_cfg
         self.model = self.prepare_model(model_cfg)
 
-    def __call__(self, prompts: list[str], **kwargs) -> list[str]:
-        responses = self.model(prompts, **kwargs)
+    def __call__(self, prompts: list[str], task_name: str, batch_job_id: str = None) -> list[str]:
+        responses = self.model(prompts, task_name, batch_job_id)
         return responses
 
     def prepare_model(self, model_cfg: DictConfig):

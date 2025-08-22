@@ -19,7 +19,7 @@ import pickle
 # with open("tmp/llm_anno_data.pkl", "rb") as f:
 #     sample_data = pickle.load(f)  # load llm annotation data
 
-with open("tmp/human_anno_data_valid_count_2and1.pkl", "rb") as f:
+with open("train_mapper/raw_dataset/llm_anno_data.pkl", "rb") as f:
     sample_data = pickle.load(f)  # load human annotation data
 
 # === 数据集类 ===
@@ -75,16 +75,18 @@ optimizer = AdamW(model.parameters(), lr=2e-5)
 criterion = nn.MSELoss()
 
 
-test_set_df = pd.read_csv('tmp/dataset_valid_confidence_score_count_3_eval.csv')
+test_set_df = pd.read_csv('train_mapper/raw_dataset/dataset_valid_confidence_score_count_3_eval.csv')
 test_sentences = test_set_df['uncertainty_expression'].tolist()
 
-inputs = tokenizer(test_sentences, return_tensors="pt", truncation=True, padding=True, max_length=128)
-inputs = {k: v.to(device) for k, v in inputs.items()}
+test_inputs = tokenizer(test_sentences, return_tensors="pt", truncation=True, padding=True, max_length=128)
+test_inputs = {k: v.to(device) for k, v in test_inputs.items()}
 
 best_test_loss = float('inf')
 
 # === 训练 ===
 model.train()
+model.reg_head.requires_grad = True
+model.encoder.requires_grad = False
 for epoch in range(100):
     total_loss = 0
     for index, batch in enumerate(dataloader):
@@ -94,23 +96,24 @@ for epoch in range(100):
 
         optimizer.zero_grad()
         preds = model(input_ids, attention_mask)
-        loss = criterion(preds*100, scores)
+        
+        loss = criterion(preds, scores)
         loss.backward()
         optimizer.step()
 
         total_loss += loss.item()
-        # if index % 100 == 0:
-        #     print(f"Batch {index} - Loss: {total_loss/(index+1):.4f}")
+        if index % 100 == 0:
+            print(f"Batch {index} - Loss: {total_loss/(index+1):.4f}")
 
 
     model.eval()
 
     with torch.no_grad():
-        pred_scores = model(inputs["input_ids"], inputs["attention_mask"]).squeeze().cpu().numpy()
-    test_loss = criterion(torch.tensor(pred_scores*100, dtype=torch.float32), torch.tensor(test_set_df['annotation_mean'].to_numpy(), dtype=torch.float32))
+        pred_scores = model(test_inputs["input_ids"], test_inputs["attention_mask"]).squeeze().cpu().numpy()
+    test_loss = criterion(torch.tensor(pred_scores, dtype=torch.float32), torch.tensor((test_set_df['annotation_mean']/100).to_numpy(), dtype=torch.float32))
     print(f"Epoch {epoch+1} - Train Loss: {total_loss/len(dataloader):.4f} - Test Loss: {test_loss:.4f} {'(new best loss)' if test_loss < best_test_loss else ''}")
     if test_loss < best_test_loss:
         best_test_loss = test_loss
-        torch.save(model.state_dict(), "tmp/uncertainty_model_human_anno_valid_count_2and1.pth")
-        test_set_df['confidence_score_probe_human_anno_trained'] = pred_scores*100
-        test_set_df.to_csv('tmp/dataset_valid_confidence_score_count_3_eval_with_human_probe_score.csv', index=False)
+        torch.save(model.reg_head.state_dict(), "train_mapper/raw_dataset/llm_anno_trained_reg_head.pth")
+        test_set_df['confidence_score_probe_llm_anno_trained'] = pred_scores
+        test_set_df.to_csv('train_mapper/raw_dataset/llm_anno_trained.csv', index=False)

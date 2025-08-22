@@ -1,13 +1,8 @@
-from datasets import load_dataset
-import os
+
 import pandas as pd
 from omegaconf import DictConfig
 from models import LLM
-import json
-from datetime import datetime
-from openai import OpenAI
 import logging
-import time
 
 OPENAI_SYSTEM_PROMPT = "You are a helpful assistant."
 
@@ -93,7 +88,7 @@ Just return the letters "A", "B", or "C", with no text around it.
 """.strip()
 
 def load_dataset(dataset_cfg: DictConfig):
-    if dataset_cfg.name == "simple_qa":
+    if dataset_cfg.name == "simple_qa" or dataset_cfg.name == "mini_simple_qa":
         return SimpleQADataset(dataset_cfg)
     elif dataset_cfg.name == "mmlu_pro":
         return MMLUProDataset(dataset_cfg)
@@ -102,7 +97,7 @@ def load_dataset(dataset_cfg: DictConfig):
     
 class SimpleQADataset():
     def __init__(self, dataset_cfg: DictConfig):
-        self.name = "simple_qa"
+        self.name = dataset_cfg.name
         self.dataset_cfg = dataset_cfg
         self.df = pd.read_csv(dataset_cfg.file_path)
         self.grader_model = LLM(dataset_cfg.grader_model)
@@ -110,7 +105,7 @@ class SimpleQADataset():
     def get_dataset(self):
         return self.df
     
-    def grade_responses(self, responses: list[str]) -> list[str]:
+    def grade_responses(self, responses: list[str], grader_batch_job_id: str = None) -> list[str]:
         # return correct, incorrect, or not attempted
         # responses is a list of strings, each string is a response to a question, in the same order as the questions in df
         # return a list of strings, each string is the grade for the corresponding response
@@ -121,7 +116,7 @@ class SimpleQADataset():
         prompts = []
         for idx, response in enumerate(responses):
             prompts.append(SIMPLE_QA_GRADER_TEMPLATE.format(question=self.df.iloc[idx]["problem"], target=self.df.iloc[idx]["answer"], predicted_answer=response))
-        grader_results = self.grader_model(prompts, task_name="grader_accuracy")
+        grader_results = self.grader_model(prompts, task_name="simple_qa_grader", batch_job_id=grader_batch_job_id)
         if any(grader_result not in ["A", "B", "C"] for grader_result in grader_results):
             logging.warning("Some grade results are invalid, not in [A, B, C]")
             exit(1)

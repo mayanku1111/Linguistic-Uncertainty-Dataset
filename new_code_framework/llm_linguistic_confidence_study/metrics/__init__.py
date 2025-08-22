@@ -1,6 +1,6 @@
-from acc import Accuracy
-from ece import ECE
-from auroc import AUROC
+from .acc import Accuracy
+from .ece import ECE
+from .auroc import AUROC
 
 
 class MetricEvaluator:

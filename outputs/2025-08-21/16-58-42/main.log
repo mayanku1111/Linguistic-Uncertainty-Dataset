@@ -1,0 +1,21 @@
+[2025-08-21 16:58:42,709][root][INFO] - qa_model:
+  name: gpt-5-mini
+confidence_extractor:
+  name: linguistic_confidence
+  model_name: distilroberta-base
+  state_dict_path: pretrained_weights/uncertainty_model_human_anno_valid_count_2and1.pth
+  mapper_name: self-trained
+  qa_template: vanilla
+dataset:
+  grader_model: {}
+  name: mini_simple_qa
+  url: None
+  file_path: new_code_framework/llm_linguistic_confidence_study/datasets/mini_simple_qa_test_set.csv
+seed: 42
+metrics:
+- acc
+- ece-15
+- auorc
+eval_only: false
+responses_path: null
+

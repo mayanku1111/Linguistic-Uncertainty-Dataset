@@ -11,24 +11,28 @@ OPENAI_SYSTEM_PROMPT = "You are a helpful assistant."
 class GPT():
     def __init__(self, model_cfg: DictConfig):
         self.model_cfg = model_cfg
-        self.model = self.prepare_model(model_cfg)
 
-    def __call__(self, prompts: list[str], task_name: str) -> list[str]:
-        batch_job_id, task_file_path = self.prepare_batch_task_and_submit(prompts, task_name)
+    def __call__(self, prompts: list[str], task_name: str, batch_job_id: str = None) -> list[str]:
+        if batch_job_id is None:
+            batch_job_id, task_file_path = self.prepare_batch_task_and_submit(prompts, task_name)
+            logging.info(f"Batch task file path for {task_name}: {task_file_path}")
         logging.info(f"Batch job for {task_name} id: {batch_job_id}")
-        logging.info(f"Batch task file path for {task_name}: {task_file_path}")
+        
+        # check batch job status
         while True:
-            batch_job = self.check_batch_job_status(batch_job_id)
+            batch_job = self.check_batch_job(batch_job_id)
             if batch_job.status != "completed":
                 logging.info(f"Batch job {batch_job.id} for {task_name} is {batch_job.status}, waiting for 60 seconds...")
                 time.sleep(60)
             else:
                 logging.info(f"Batch job {batch_job.id} for {task_name} is completed")
                 break
+        
+        # retrieve batch job output
         responses = self.retrieve_batch_job_output(batch_job_id)
         return responses
     
-    def prepare_batch_task(self, prompts: list[str], task_name: str) -> list[str]:
+    def prepare_batch_task_and_submit(self, prompts: list[str], task_name: str) -> list[str]:
         #########################################################
         # prepare request for batch grading
         #########################################################
@@ -55,7 +59,8 @@ class GPT():
             tasks.append(task)
 
         # Write the tasks to a JSONL file
-        task_file_path = f'batch_tasks/{task_name}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.jsonl'
+        task_file_path = f'llm_linguistic_confidence_study/batch_tasks/{task_name}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.jsonl'
+        os.makedirs(os.path.dirname(task_file_path), exist_ok=True)
         with open(task_file_path, 'w', encoding='utf-8') as f:
             for t in tasks:
                 f.write(json.dumps(t, ensure_ascii=False) + '\n')
@@ -85,14 +90,14 @@ class GPT():
         return batch_job.id, task_file_path
     
     '''
-    This function checks the status of a batch job.
+    This function checks a batch job.
     batch_job_id: the id of the batch job
-    return: the status of the batch job
+    return: the batch job object
     '''
-    def check_batch_job_status(self, batch_job_id: str) -> str:
+    def check_batch_job(self, batch_job_id: str) -> str:
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         batch_job = client.batches.retrieve(batch_job_id)
-        return batch_job.status
+        return batch_job
 
 
     '''

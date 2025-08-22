@@ -6,13 +6,14 @@ from .verbal_numerical_confidence import VerbalNumericalConfidenceExtractor
 from omegaconf import DictConfig
 
 class ConfidenceExtractor:
-    def __init__(self, confidence_extraction_method_cfg: DictConfig, dataset_cfg: DictConfig, qa_model_cfg: DictConfig):
-        self.confidence_extractor = self.get_confidence_extractor(confidence_extraction_method_cfg.name)
-        self.dataset_cfg = dataset_cfg
+    def __init__(self, confidence_extraction_method_cfg: DictConfig, qa_model_cfg: DictConfig):
+        self.confidence_extraction_method_cfg = confidence_extraction_method_cfg
         self.qa_model_cfg = qa_model_cfg
+        
+        self.confidence_extractor = self.get_confidence_extractor(confidence_extraction_method_cfg.name)
     
-    def __call__(self, dataset):
-        return self.confidence_extractor(dataset)
+    def __call__(self, dataset, qa_batch_job_id: str = None, grader_batch_job_id: str = None):
+        return self.confidence_extractor(dataset, qa_batch_job_id, grader_batch_job_id)
     
     def get_confidence_extractor(self, confidence_extraction_method_name):
         if confidence_extraction_method_name == "linguistic_confidence": 

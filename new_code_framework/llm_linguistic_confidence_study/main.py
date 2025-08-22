@@ -22,21 +22,18 @@ def main(cfg: DictConfig):
     else:
         confidence_extractor = ConfidenceExtractor(cfg.confidence_extractor, cfg.qa_model)
         # return a dataframe with the following columns: question, gold_answer, reponse1, reponse2, reponse3, ..., confidence, accuracy
-        responses_df = confidence_extractor(dataset)
+        responses_df = confidence_extractor(dataset, cfg.qa_batch_id, cfg.grader_batch_id)
 
     # evaluate the responses
-    results_df = pd.DataFrame(columns=cfg.metrics)
-    for metric in cfg.metrics:
-        metric_evaluator = MetricEvaluator(metric)
-        results_df[metric] = metric_evaluator.evaluate(responses_df)
-        logging.info(f"{metric}: {results_df[metric]}")
+    for metric_name in cfg.metrics:
+        metric_evaluator = MetricEvaluator(metric_name)
+        score = metric_evaluator.evaluate(responses_df)
+        logging.info(f"{metric_name}: {score}")
         
     # save the results, responses and config
     time_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     responses_df.to_csv(f"results/{cfg.dataset.name}/{cfg.confidence_extractor.name}/{cfg.qa_model.name}_{time_stamp}_responses.csv", index=False)
-    results_df.to_csv(f"results/{cfg.dataset.name}/{cfg.confidence_extractor.name}/{cfg.qa_model.name}_{time_stamp}_results.csv", index=False)
     OmegaConf.save(cfg, f"results/{cfg.dataset.name}/{cfg.confidence_extractor.name}/{cfg.qa_model.name}_{time_stamp}_config.yaml")
-    logging.info(f"Results saved to results/{cfg.dataset.name}/{cfg.confidence_extractor.name}/{cfg.qa_model.name}_{time_stamp}_results.csv")
     logging.info(f"Responses saved to results/{cfg.dataset.name}/{cfg.confidence_extractor.name}/{cfg.qa_model.name}_{time_stamp}_responses.csv")
     logging.info(f"Config saved to results/{cfg.dataset.name}/{cfg.confidence_extractor.name}/{cfg.qa_model.name}_{time_stamp}_config.yaml")
 

@@ -66,15 +66,18 @@ class LinguisticConfidenceExtractor():
     
     def get_confidence_mapper(self, confidence_extraction_method_cfg):
         if confidence_extraction_method_cfg.mapper_name == "self-trained":
-            return LinguisticConfidenceEstimator(confidence_extraction_method_cfg)
+            confidence_estimator = LinguisticConfidenceEstimator(confidence_extraction_method_cfg)
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            confidence_estimator.reg_head.load_state_dict(torch.load(confidence_extraction_method_cfg.state_dict_path))
+            return confidence_estimator.to(device)
         elif confidence_extraction_method_cfg.mapper_name == "decisiveness":
             return DecisivenessEstimator(confidence_extraction_method_cfg)
         else:
             raise ValueError(f"Invalid confidence extraction method: {confidence_extraction_method_cfg}")
         
-    def __call__(self, dataset):
+    def __call__(self, dataset, qa_batch_job_id: str = None, grader_batch_job_id: str = None):
         if dataset.name == "simple_qa" or dataset.name == "mini_simple_qa":
-            qa_responses = self.generate_qa_responses(dataset.df, self.confidence_extraction_method_cfg, task_name=f"qa")
+            qa_responses = self.generate_qa_responses(dataset.df, self.confidence_extraction_method_cfg, task_name=f"simple_qa_lc_qa", qa_batch_job_id=qa_batch_job_id)
             # combine qa_responses and dataset_df
             response_df = dataset.df.copy()
             response_df["responses"] = qa_responses
@@ -82,7 +85,7 @@ class LinguisticConfidenceExtractor():
             confidences = self.confidence_mapper(response_df)
             response_df["confidences"] = confidences
             # grade the accuracy of the confidence scores
-            accuracies = dataset.grade_responses(response_df["responses"])
+            accuracies = dataset.grade_responses(response_df["responses"], grader_batch_job_id=grader_batch_job_id)
             response_df["accuracies"] = accuracies
         elif dataset.name == "mmlu_pro":
             pass
@@ -92,7 +95,7 @@ class LinguisticConfidenceExtractor():
         return response_df
 
 
-    def generate_qa_responses(self, dataset_df: pd.DataFrame, confidence_extraction_method_cfg: DictConfig, task_name: str) -> list[str]:
+    def generate_qa_responses(self, dataset_df: pd.DataFrame, confidence_extraction_method_cfg: DictConfig, task_name: str, qa_batch_job_id: str = None) -> list[str]:
         # prepare prompts
         if confidence_extraction_method_cfg.qa_template == "vanilla":
             prompt_template = SIMPLE_QA_EVAL_VANILLA_TEMPLATE
@@ -103,34 +106,30 @@ class LinguisticConfidenceExtractor():
         else:
             raise ValueError(f"Invalid qa template: {confidence_extraction_method_cfg.qa_template}")
         # generate responses
-        responses = self.qa_model(qa_prompts, task_name=task_name)
+        responses = self.qa_model(qa_prompts, task_name=task_name, batch_job_id=qa_batch_job_id)
         # post-process the responses if needed
         return responses
 
         
-class LinguisticConfidenceEstimator():
+class LinguisticConfidenceEstimator(nn.Module):
     def __init__(self, cfg: DictConfig):
+        super().__init__()
         self.cfg = cfg
-        self.model_name = cfg.model_name
-        self.encoder = AutoModel.from_pretrained(self.model_name)
+        self.encoder = AutoModel.from_pretrained(cfg.model_name)
         self.reg_head = nn.Sequential(
             nn.Linear(self.encoder.config.hidden_size, 1),
             nn.Sigmoid()  # output range in [0, 1]
         )
-        self.load_state_dict(torch.load(cfg.state_dict_path))
         
     def __call__(self, response_df: pd.DataFrame) -> list[float]:
-        tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        tokenizer = AutoTokenizer.from_pretrained(self.cfg.model_name)
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        inputs = tokenizer(response_df["responses"], return_tensors="pt", truncation=True, padding=True, max_length=128)
+        inputs = tokenizer(response_df["responses"].tolist(), return_tensors="pt", truncation=True, padding=True, max_length=128)
         inputs = {k: v.to(device) for k, v in inputs.items()}
         output = self.encoder(input_ids=inputs["input_ids"], attention_mask=inputs["attention_mask"])
         cls_hidden = output.last_hidden_state[:, 0]
-        confidence_scores = self.reg_head(cls_hidden).squeeze(-1)
+        confidence_scores = self.reg_head(cls_hidden).squeeze(-1).detach().cpu().numpy()
         return confidence_scores
-    
-    def load_state_dict(self, state_dict):
-        self.encoder.load_state_dict(state_dict)
     
 class DecisivenessEstimator():
     def __init__(self, cfg: DictConfig):

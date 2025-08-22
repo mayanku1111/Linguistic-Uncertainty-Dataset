@@ -1,0 +1,29 @@
+[2025-08-21 18:33:27,509][root][INFO] - qa_model:
+  name: gpt-5-mini
+confidence_extractor:
+  name: linguistic_confidence
+  model_name: distilroberta-base
+  state_dict_path: new_code_framework/llm_linguistic_confidence_study/pretrained_weights/human_anno_trained_reg_head.pth
+  mapper_name: self-trained
+  qa_template: vanilla
+dataset:
+  grader_model:
+    name: gpt-5-mini
+  name: mini_simple_qa
+  url: None
+  file_path: new_code_framework/llm_linguistic_confidence_study/datasets/mini_simple_qa_test_set.csv
+seed: 42
+metrics:
+- acc
+- ece-15
+- auorc
+eval_only: false
+responses_path: null
+
+[2025-08-21 18:33:28,157][root][INFO] - Batch task file saved to llm_linguistic_confidence_study/batch_tasks/simple_qa_qa_20250821_183328.jsonl
+[2025-08-21 18:33:31,724][httpx][INFO] - HTTP Request: POST https://api.openai.com/v1/files "HTTP/1.1 200 OK"
+[2025-08-21 18:33:37,259][httpx][INFO] - HTTP Request: POST https://api.openai.com/v1/batches "HTTP/1.1 200 OK"
+[2025-08-21 18:33:37,263][root][INFO] - Batch job created: batch_68a6d9e0bef081909cef8c8c515112eb
+[2025-08-21 18:33:44,763][root][INFO] - Batch job for simple_qa_qa id: batch_68a6d9e0bef081909cef8c8c515112eb
+[2025-08-21 18:33:44,763][root][INFO] - Batch task file path for simple_qa_qa: llm_linguistic_confidence_study/batch_tasks/simple_qa_qa_20250821_183328.jsonl
+[2025-08-21 18:33:45,246][httpx][INFO] - HTTP Request: GET https://api.openai.com/v1/batches/batch_68a6d9e0bef081909cef8c8c515112eb "HTTP/1.1 200 OK"
