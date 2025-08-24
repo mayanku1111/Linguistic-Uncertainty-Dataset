@@ -20,7 +20,7 @@ class SemanticUncertaintyExtractor():
     def get_qa_model(self, qa_model_cfg):
         return LLM(qa_model_cfg)
     
-    def __call__(self, dataset, qa_batch_job_id: str = None, grader_batch_job_id: str = None):
+    def __call__(self, dataset, qa_batch_job_id: list[str] = None, grader_batch_job_id: list[str] | str = None):
         if dataset.name == "simple_qa" or dataset.name == "mini_simple_qa":
             qa_responses = self.generate_qa_responses(dataset.df, self.confidence_extraction_method_cfg, task_name=f"simple_qa_su_qa", qa_batch_job_id=qa_batch_job_id)
             # combine qa_responses and dataset_df
@@ -28,29 +28,41 @@ class SemanticUncertaintyExtractor():
             for i in range(self.confidence_extraction_method_cfg.sample_times):
                 response_df[f"response_{i}"] = qa_responses[i]
             # semantic uncertainty estimation
-            semantic_ids = self.get_semantic_ids(response_df, self.entailment_model)
-            for i in range(self.confidence_extraction_method_cfg.sample_times):
-                response_df[f"semantic_id_{i}"] = semantic_ids[i]
+            response_df_with_semantic_ids = self.get_semantic_ids_for_response_df(response_df)
             # confidence estimation
-            confidences = self.calculate_confidence(response_df)
-            response_df["confidences"] = confidences
+            confidences = self.calculate_confidence(response_df_with_semantic_ids)
+            response_df_with_semantic_ids["confidences"] = confidences
             # grade the accuracy of the confidence scores
-            accuracies = dataset.grade_responses(response_df["responses"], grader_batch_job_id=grader_batch_job_id)
-            response_df["accuracies"] = accuracies
+            accuracies = dataset.grade_responses(response_df_with_semantic_ids["responses"], grader_batch_job_id=grader_batch_job_id)
+            response_df_with_semantic_ids["accuracies"] = accuracies
         elif dataset.name == "mmlu_pro":
             pass
         else:
             raise ValueError(f"Invalid dataset name: {dataset.name}")
         # return the response_df
+        return response_df_with_semantic_ids
+
+    def calculate_confidence(self, response_df_with_semantic_ids: pd.DataFrame):
+        for idx, row in response_df_with_semantic_ids.iterrows():
+            semantic_ids = [row[f"semantic_id_{i}"] for i in range(self.confidence_extraction_method_cfg.sample_times)]
+            response_df_with_semantic_ids.at[idx, "confidences"] = semantic_ids.count(semantic_ids[0]) / len(semantic_ids)
+        return response_df_with_semantic_ids
+    
+    def get_semantic_ids_for_response_df(self, response_df: pd.DataFrame, strict_entailment=False):
+        for idx, row in response_df.iterrows():
+            response_list = [row[f"response_{i}"] for i in range(self.confidence_extraction_method_cfg.sample_times)]
+            semantic_ids = self.get_semantic_ids_for_response_list(response_list, strict_entailment)
+            for i in range(self.confidence_extraction_method_cfg.sample_times):
+                response_df.at[idx, f"semantic_id_{i}"] = semantic_ids[i]
         return response_df
 
-    def get_semantic_ids(self, response_df: pd.DataFrame, model, strict_entailment=False, example=None):
+    def get_semantic_ids_for_response_list(self, response_list: list[str], strict_entailment=False):
         """Group list of predictions into semantic meaning."""
 
         def are_equivalent(text1, text2):
 
-            implication_1 = model.check_implication(text1, text2, example=example)
-            implication_2 = model.check_implication(text2, text1, example=example)  # pylint: disable=arguments-out-of-order
+            implication_1 = self.entailment_model.check_implication(text1, text2)
+            implication_2 = self.entailment_model.check_implication(text2, text1)  # pylint: disable=arguments-out-of-order
             assert (implication_1 in [0, 1, 2]) and (implication_2 in [0, 1, 2])
 
             if strict_entailment:
@@ -64,17 +76,17 @@ class SemanticUncertaintyExtractor():
             return semantically_equivalent
 
         # Initialise all ids with -1.
-        semantic_set_ids = [-1] * len(strings_list)
+        semantic_set_ids = [-1] * len(response_list)
         # Keep track of current id.
         next_id = 0
-        for i, string1 in enumerate(strings_list):
+        for i, string1 in enumerate(response_list):
             # Check if string1 already has an id assigned.
             if semantic_set_ids[i] == -1:
                 # If string1 has not been assigned an id, assign it next_id.
                 semantic_set_ids[i] = next_id
-                for j in range(i+1, len(strings_list)):
+                for j in range(i+1, len(response_list)):
                     # Search through all remaining strings. If they are equivalent to string1, assign them the same id.
-                    if are_equivalent(string1, strings_list[j]):
+                    if are_equivalent(string1, response_list[j]):
                         semantic_set_ids[j] = next_id
                 next_id += 1
 
@@ -90,7 +102,8 @@ class EntailmentDeberta():
         self.model = AutoModelForSequenceClassification.from_pretrained(
             "microsoft/deberta-v2-xlarge-mnli").to(device)
 
-    def check_implication(self, text1, text2, *args, **kwargs):
+    def check_implication(self, text1, text2):
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         inputs = self.tokenizer(text1, text2, return_tensors="pt").to(device)
         # The model checks if text1 -> text2, i.e. if text2 follows from text1.
         # check_implication('The weather is good', 'The weather is good and I like you') --> 1

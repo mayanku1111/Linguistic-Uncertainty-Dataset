@@ -15,4 +15,4 @@ auroc:
   _target_: metrics.AUROC
   name: auroc
   format: simpleqa_like
-  exclude_not_attempted: false
+  exclude_not_attempted: true

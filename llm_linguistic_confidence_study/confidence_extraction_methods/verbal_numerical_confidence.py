@@ -6,14 +6,13 @@ from omegaconf import DictConfig
 
 # "Can Large Language Models Faithfully Express Their Intrinsic Uncertainty in Words?" vanilla prompt + Simple QA Original Prompt
 SIMPLE_QA_VERBAL_NUMERICAL_CONFIDENCE_QA_PROMPT_VANILLA = """
-Answer the following question using a succinct (at most one sentence) and full answer.
-Here is the question:
+Answer the following question using a succinct (at most one sentence) and full answer, here is the question:
 {question}
 Please provide a confidence score between 0 and 100 at the end of your answer in the following JSON format:
-{
-"answer": "Your answer here",
+{{
+"answer": Your answer here,
 "confidence_score": number
-}
+}}
 """.strip()
 
 # Simple QA Original Paper Prompt: https://arxiv.org/pdf/2411.04368
@@ -21,11 +20,12 @@ SIMPLE_QA_VERBAL_NUMERICAL_CONFIDENCE_QA_PROMPT_BASE = """
 Here is the question:
 {question}
 Please provide a confidence score between 0 and 100 at the end of your answer in the following JSON format:
-{
-"answer": "Your answer here",
+{{
+"answer": Your answer here,
 "confidence_score": number
-}
+}}
 """.strip()
+
 
 
 class VerbalNumericalConfidenceExtractor():

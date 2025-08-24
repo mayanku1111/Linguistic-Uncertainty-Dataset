@@ -20,7 +20,7 @@ def main(cfg: DictConfig):
 
     confidence_extractor = ConfidenceExtractor(cfg.confidence_extractor, cfg.qa_model)
     # return a dataframe with the following columns: question, gold_answer, reponse1, reponse2, reponse3, ..., confidence, accuracy
-    responses_df = confidence_extractor(dataset, cfg.qa_batch_id, cfg.grader_batch_id)
+    responses_df = confidence_extractor(dataset, cfg.pre_runned_batch.qa_batch_id, cfg.pre_runned_batch.grader_batch_id)
 
     # evaluate the responses
     results = pd.DataFrame()

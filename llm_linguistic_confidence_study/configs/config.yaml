@@ -1,15 +1,26 @@
+# defaults:
+#  - qa_model: gpt-5-mini
+#  - confidence_extractor: linguistic_confidence_base
+#  - dataset: simple_qa
+#  - metrics: default
+#  - pre_runned_batch: vanilla-gpt-5-mini
+
+
+# hydra:
+#   run:
+#     dir: llm_linguistic_confidence_study/results/${dataset.name}/${qa_model.name}/${confidence_extractor.name}/${now:%Y-%m-%d_%H-%M-%S}
+
+# seed: 42
 defaults:
  - qa_model: gpt-5-mini
- - confidence_extractor: linguistic_confidence_base
+ - confidence_extractor: verbal_numerical_confidence
  - dataset: simple_qa
  - metrics: default
+ - pre_runned_batch: vanilla-vnc-gpt-5-mini
+
 
 hydra:
   run:
     dir: llm_linguistic_confidence_study/results/${dataset.name}/${qa_model.name}/${confidence_extractor.name}/${now:%Y-%m-%d_%H-%M-%S}
 
 seed: 42
-eval_only: false
-responses_path: null
-qa_batch_id: batch_689da7dd35708190a6d0ed4012152e50
-grader_batch_id: batch_689eedb57d9c81909f0bd660fa2a3271
