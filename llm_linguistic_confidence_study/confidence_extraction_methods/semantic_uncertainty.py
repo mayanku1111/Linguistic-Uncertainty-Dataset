@@ -46,9 +46,10 @@ class SemanticUncertaintyExtractor():
             for i in range(self.confidence_extraction_method_cfg.sample_times):
                 response_df[f"response_{i}"] = qa_responses[i]
             # semantic uncertainty estimation
-            semantic_ids = self.get_semantic_ids_for_response_df(response_df)
-            for i in range(self.confidence_extraction_method_cfg.sample_times):
-                response_df[f"semantic_id_{i}"] = semantic_ids[i]
+            semantic_ids_list_list = self.get_semantic_ids_for_response_df_batch(response_df)
+            for idx in range(len(response_df)): 
+                for i in range(self.confidence_extraction_method_cfg.sample_times):
+                    response_df.at[idx, f"semantic_id_{i}"] = semantic_ids_list_list[idx][i]
             # confidence estimation
             confidences, predictions = self.calculate_confidence_and_predictions(response_df)
             response_df["confidences"] = confidences
@@ -93,6 +94,94 @@ class SemanticUncertaintyExtractor():
             predictions.append(response_df.at[idx, f"response_{index_of_most_frequent_semantic_id}"])
         return confidences, predictions
     
+    # ______________________code run df as a whole______________________
+    def get_semantic_ids_for_response_df_batch(self, response_df: pd.DataFrame, strict_entailment=False) -> list[list[int]]:
+        
+        def are_equivalent_batch(text1_list: list[str], text2_list: list[str], strict_entailment: bool = False):
+            assert len(text1_list) == len(text2_list), "Both lists must have the same length"
+
+            # batch inference
+            test1_list_concat_test2_list = text1_list + text2_list
+            test2_list_concat_test1_list = text2_list + text1_list
+            implication = self.entailment_model.check_implication_batch(test1_list_concat_test2_list, test2_list_concat_test1_list)
+            implication_1 = implication[0:len(text1_list)]
+            implication_2 = implication[len(text1_list):]
+            # implication_1 = self.entailment_model.check_implication_batch(text1_list, text2_list)
+            # implication_2 = self.entailment_model.check_implication_batch(text2_list, text1_list)
+
+            results = []
+            i = 0
+            for i1, i2 in zip(implication_1, implication_2):
+                assert (i1 in [0, 1, 2]) and (i2 in [0, 1, 2])
+
+                if strict_entailment:
+                    semantically_equivalent = (i1 == 2) and (i2 == 2)
+                else:
+                    implications = [i1, i2]
+                    semantically_equivalent = (0 not in implications) and ([1, 1] != implications)
+
+                results.append((text1_list[i], text2_list[i], semantically_equivalent))
+                i += 1
+            return results
+        
+                
+        def retrieve_equivalent_results(are_equivalent_batch_results, t1, t2):
+            for item in are_equivalent_batch_results:
+                if item[0] == t1 and item[1] == t2:
+                    return item[2]
+        
+        semantic_ids_list_list = []
+        # make all responses in a list
+        all_responses_pair_left = []
+        all_responses_pair_right = []
+        for idx, row in tqdm(response_df.iterrows(), total=len(response_df), desc="build pairs for all responses"):
+            response_set = [row[f"response_{i}"] for i in range(self.confidence_extraction_method_cfg.sample_times)]
+            # build list of pairs
+            text_pair_left = []
+            text_pair_right = []
+            for i in range(len(response_set)):
+                for j in range(i+1, len(response_set)):
+                    text_pair_left.append(response_set[i])
+                    text_pair_right.append(response_set[j])
+            all_responses_pair_left.extend(text_pair_left)
+            all_responses_pair_right.extend(text_pair_right)
+        # get semantic ids for all responses
+        # are_equivalent_batch
+        are_equivalent_batch_results = are_equivalent_batch(all_responses_pair_left, all_responses_pair_right, strict_entailment)
+        # spilt are_equivalent_batch_results into multiple lists
+        len_pair_per_response_set = len(text_pair_left)
+        are_equivalent_batch_results_multiple = [are_equivalent_batch_results[i*len_pair_per_response_set:(i+1)*len_pair_per_response_set] for i in range(len(response_df))]
+        
+        # get semantic ids for all responses
+        for idx, row in tqdm(response_df.iterrows(), total=len(response_df), desc="Getting semantic ids"):
+            response_set = [row[f"response_{i}"] for i in range(self.confidence_extraction_method_cfg.sample_times)]
+            # Initialise all ids with -1.
+            semantic_set_ids = [-1] * len(response_set)
+            # Keep track of current id.
+            next_id = 0
+            for i, string1 in enumerate(response_set):
+                # Check if string1 already has an id assigned.
+                if semantic_set_ids[i] == -1:
+                    # If string1 has not been assigned an id, assign it next_id.
+                    semantic_set_ids[i] = next_id
+                    for j in range(i+1, len(response_set)):
+                        # Search through all remaining strings. If they are equivalent to string1, assign them the same id.
+                        if retrieve_equivalent_results(are_equivalent_batch_results_multiple[idx], string1, response_set[j]):
+                            semantic_set_ids[j] = next_id
+                    next_id += 1
+
+            assert -1 not in semantic_set_ids
+            semantic_ids_list_list.append(semantic_set_ids)
+        
+        return semantic_ids_list_list
+        
+    
+    
+    
+    
+    
+    
+    # ______________________code run row by row______________________
     def get_semantic_ids_for_response_df(self, response_df: pd.DataFrame, strict_entailment=False) -> list[list[int]]:
         semantic_ids_list_list = []
         for i in range(self.confidence_extraction_method_cfg.sample_times):
@@ -105,24 +194,7 @@ class SemanticUncertaintyExtractor():
         return semantic_ids_list_list
 
     def get_semantic_ids_for_response_set(self, response_set: list[str], strict_entailment=False):
-        """Group list of predictions into semantic meaning."""
-
-        def are_equivalent(text1, text2):
-
-            implication_1 = self.entailment_model.check_implication(text1, text2)
-            implication_2 = self.entailment_model.check_implication(text2, text1)  # pylint: disable=arguments-out-of-order
-            assert (implication_1 in [0, 1, 2]) and (implication_2 in [0, 1, 2])
-
-            if strict_entailment:
-                semantically_equivalent = (implication_1 == 2) and (implication_2 == 2)
-
-            else:
-                implications = [implication_1, implication_2]
-                # Check if none of the implications are 0 (contradiction) and not both of them are neutral.
-                semantically_equivalent = (0 not in implications) and ([1, 1] != implications)
-
-            return semantically_equivalent
-        
+        """Group list of predictions into semantic meaning."""   
         def are_equivalent_batch(text1_list: list[str], text2_list: list[str], strict_entailment: bool = False):
             assert len(text1_list) == len(text2_list), "Both lists must have the same length"
 
@@ -211,7 +283,7 @@ class EntailmentDeberta():
         self,
         texts1,
         texts2,
-        batch_size: int = 128,
+        batch_size: int = 256,
         max_length: int = 256,
     ):
         """
@@ -232,7 +304,7 @@ class EntailmentDeberta():
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         with torch.no_grad():
             n = len(texts1)
-            for i in range(0, n, batch_size):
+            for i in tqdm(range(0, n, batch_size), total=n//batch_size, desc="batch inference"):
                 batch1 = texts1[i : i + batch_size]
                 batch2 = texts2[i : i + batch_size]
 
