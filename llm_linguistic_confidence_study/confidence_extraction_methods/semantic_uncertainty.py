@@ -127,10 +127,16 @@ class SemanticUncertaintyExtractor():
             assert len(text1_list) == len(text2_list), "Both lists must have the same length"
 
             # batch inference
-            implication_1 = self.entailment_model.check_implication_batch(text1_list, text2_list)
-            implication_2 = self.entailment_model.check_implication_batch(text2_list, text1_list)
+            test1_list_concat_test2_list = text1_list + text2_list
+            test2_list_concat_test1_list = text2_list + text1_list
+            implication = self.entailment_model.check_implication_batch(test1_list_concat_test2_list, test2_list_concat_test1_list)
+            implication_1 = implication[0:len(text1_list)]
+            implication_2 = implication[len(text1_list):]
+            # implication_1 = self.entailment_model.check_implication_batch(text1_list, text2_list)
+            # implication_2 = self.entailment_model.check_implication_batch(text2_list, text1_list)
 
             results = []
+            i = 0
             for i1, i2 in zip(implication_1, implication_2):
                 assert (i1 in [0, 1, 2]) and (i2 in [0, 1, 2])
 
@@ -140,9 +146,14 @@ class SemanticUncertaintyExtractor():
                     implications = [i1, i2]
                     semantically_equivalent = (0 not in implications) and ([1, 1] != implications)
 
-                results.append(semantically_equivalent)
-
+                results.append((text1_list[i], text2_list[i], semantically_equivalent))
+                i += 1
             return results
+        
+        def retrieve_equivalent_results(are_equivalent_batch_results, t1, t2):
+            for item in are_equivalent_batch_results:
+                if item[0] == t1 and item[1] == t2:
+                    return item[2]
 
         # build list of pairs
         text_pair_left = []
@@ -152,56 +163,24 @@ class SemanticUncertaintyExtractor():
                 text_pair_left.append(response_set[i])
                 text_pair_right.append(response_set[j])
                 
+                
         # are_equivalent_batch
         are_equivalent_batch_results = are_equivalent_batch(text_pair_left, text_pair_right, strict_entailment)
-        
+    
         # Initialise all ids with -1.
         semantic_set_ids = [-1] * len(response_set)
         # Keep track of current id.
         next_id = 0
-        len_response_set = len(response_set)
         for i, string1 in enumerate(response_set):
             # Check if string1 already has an id assigned.
             if semantic_set_ids[i] == -1:
                 # If string1 has not been assigned an id, assign it next_id.
                 semantic_set_ids[i] = next_id
                 for j in range(i+1, len(response_set)):
-                    idx = sum([len_response_set - t for t in range(i)]) - len_response_set + j - i
-                    if are_equivalent_batch_results[idx]:
+                    # Search through all remaining strings. If they are equivalent to string1, assign them the same id.
+                    if retrieve_equivalent_results(are_equivalent_batch_results, string1, response_set[j]):
                         semantic_set_ids[j] = next_id
                 next_id += 1
-        
-        # Initialise all ids with -1.
-        semantic_set_ids2 = [-1] * len(response_set)
-        # Keep track of current id.
-        next_id2 = 0
-        len_response_set = len(response_set)
-        for i, string1 in enumerate(response_set):
-            # Check if string1 already has an id assigned.
-            if semantic_set_ids2[i] == -1:
-                # If string1 has not been assigned an id, assign it next_id.
-                semantic_set_ids2[i] = next_id2
-                for j in range(i+1, len(response_set)):
-                    idx = sum([len_response_set - t for t in range(i)]) - len_response_set + j - i
-                    if are_equivalent_batch_results[idx]:
-                        semantic_set_ids2[j] = next_id2
-                next_id2 += 1
-        
-    
-                # Initialise all ids with -1.
-        semantic_set_ids_temp = [-1] * len(response_set)
-        # Keep track of current id.
-        next_id_temp = 0
-        for i, string1 in enumerate(response_set):
-            # Check if string1 already has an id assigned.
-            if semantic_set_ids_temp[i] == -1:
-                # If string1 has not been assigned an id, assign it next_id.
-                semantic_set_ids_temp[i] = next_id_temp
-                for j in range(i+1, len(response_set)):
-                    # Search through all remaining strings. If they are equivalent to string1, assign them the same id.
-                    if are_equivalent(string1, response_set[j]):
-                        semantic_set_ids_temp[j] = next_id_temp
-                next_id_temp += 1
 
         assert -1 not in semantic_set_ids
 
