@@ -13,3 +13,4 @@ outputs/
 results/
 .vscode/
 .DS_Store
+*.jsonl
