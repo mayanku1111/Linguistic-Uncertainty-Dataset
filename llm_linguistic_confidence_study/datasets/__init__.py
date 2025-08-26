@@ -86,24 +86,28 @@ C: NOT_ATTEMPTED
 Just return the letters "A", "B", or "C", with no text around it.
 """.strip()
 
+
 def load_dataset(dataset_cfg: DictConfig):
     if dataset_cfg.name == "simple_qa" or dataset_cfg.name == "mini_simple_qa":
         return SimpleQADataset(dataset_cfg)
     elif dataset_cfg.name == "mmlu_pro":
         return MMLUProDataset(dataset_cfg)
+    if dataset_cfg.name == "simple_qa_finetune" or dataset_cfg.name == "mini_simple_qa_finetune":
+        return SimpleQAFinetuneDataset(dataset_cfg)
     else:
         raise ValueError(f"Invalid dataset name: {dataset_cfg.name}")
-    
+
+
 class SimpleQADataset():
     def __init__(self, dataset_cfg: DictConfig):
         self.name = dataset_cfg.name
         self.dataset_cfg = dataset_cfg
         self.df = pd.read_csv(dataset_cfg.file_path)
         self.grader_model = LLM(dataset_cfg.grader_model)
-        
+
     def get_dataset(self):
         return self.df
-    
+
     def grade_responses(self, responses: list[str], grader_batch_job_id: str = None, task_name: str = None) -> list[str]:
         # return correct, incorrect, or not attempted
         # responses is a list of strings, each string is a response to a question, in the same order as the questions in df
@@ -114,8 +118,10 @@ class SimpleQADataset():
         #########################################################
         prompts = []
         for idx, response in enumerate(responses):
-            prompts.append(SIMPLE_QA_GRADER_TEMPLATE.format(question=self.df.iloc[idx]["problem"], target=self.df.iloc[idx]["answer"], predicted_answer=response))
-        grader_results = self.grader_model(prompts, task_name=task_name, batch_job_id=grader_batch_job_id)
+            prompts.append(SIMPLE_QA_GRADER_TEMPLATE.format(
+                question=self.df.iloc[idx]["problem"], target=self.df.iloc[idx]["answer"], predicted_answer=response))
+        grader_results = self.grader_model(
+            prompts, task_name=task_name, batch_job_id=grader_batch_job_id)
         if any(grader_result not in ["A", "B", "C"] for grader_result in grader_results):
             logging.warning("Some grade results are invalid, not in [A, B, C]")
             exit(1)
@@ -125,17 +131,39 @@ class SimpleQADataset():
             "B": "INCORRECT",
             "C": "NOT_ATTEMPTED"
         }
-        results_list = [result_map[grader_result] for grader_result in grader_results]
+        results_list = [result_map[grader_result]
+                        for grader_result in grader_results]
         return results_list
-                
-    
+
+
+class SimpleQAFinetuneDataset():
+    def __init__(self, dataset_cfg: DictConfig) -> None:
+        self.name = dataset_cfg.name
+        self.dataset_cfg = dataset_cfg
+        self.df = pd.read_csv(dataset_cfg.file_path)
+        self.grader_model = LLM(dataset_cfg.grader_model)
+
+    def get_dataset(self):
+        return self.df
+
+    def __call__(self, *args: Any, **kwds: Any) -> Any: 
+        df = pd.read_csv("build/output/FT_input.csv", usecols=["answer", "target_answer"])
+        dataset = Dataset.from_pandas(df)
+        split_dataset = dataset.train_test_split(test_size=0.3, seed=42)
+        split_dataset = split_dataset.map(
+            self._tokenize(),
+            batched=False,
+            remove_columns=split_dataset["train"].column_names,
+        )
+
+
 class MMLUProDataset():
     def __init__(self, dataset_cfg: DictConfig):
         self.dataset_cfg = dataset_cfg
         self.df = load_dataset(dataset_cfg)
-        
+
     def __call__(self):
         return self.df
-    
+
     def get_dataset(self):
         return self.df
