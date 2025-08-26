@@ -1,5 +1,5 @@
 from openai import OpenAI
-from omegaconf import DictConfig
+from omegaconf import DictConfig, ListConfig
 import json
 import os
 import time
@@ -12,8 +12,14 @@ class GPT():
     def __init__(self, model_cfg: DictConfig):
         self.model_cfg = model_cfg
 
-    def __call__(self, prompts: list[str], task_name: str, batch_job_id: str = None) -> list[str]:
-        if batch_job_id is None:
+    def __call__(self, prompts: list[str], task_name: str, batch_job_id: ListConfig | str = None) -> list[str]:
+        if isinstance(batch_job_id, ListConfig):
+            responses = []
+            for batch_job_id in batch_job_id:
+                responses.extend(self.retrieve_batch_job_output(batch_job_id))
+        elif isinstance(batch_job_id, str):
+            responses = self.retrieve_batch_job_output(batch_job_id)
+        elif batch_job_id is None:
             batch_job_id, task_file_path = self.prepare_batch_task_and_submit(prompts, task_name)
             # check batch job status
             while True:
@@ -24,11 +30,8 @@ class GPT():
                 else:
                     logging.info(f"Batch job {batch_job.id} for {task_name} is completed")
                     break
-        else:
-            logging.info(f"Batch job {batch_job_id} is runned before, download the output file now...")
+            responses = self.retrieve_batch_job_output(batch_job_id)
 
-        # retrieve batch job output
-        responses = self.retrieve_batch_job_output(batch_job_id)
         return responses
     
     def prepare_batch_task_and_submit(self, prompts: list[str], task_name: str) -> list[str]:

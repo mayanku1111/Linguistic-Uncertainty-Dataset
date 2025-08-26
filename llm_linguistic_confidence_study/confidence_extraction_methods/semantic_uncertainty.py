@@ -2,12 +2,29 @@ import pandas as pd
 import numpy as np
 from sympy.logic.boolalg import false
 import tqdm
+from ..datasets import MMLUProDataset, SimpleQADataset
 from ..models import LLM
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
 import torch.nn.functional as F
 import os
 import logging
+from omegaconf import DictConfig, ListConfig
+from tqdm import tqdm
+
+SIMPLE_QA_EVAL_VANILLA_TEMPLATE = """
+Answer the following question using a succinct (at most one sentence) and full answer.
+
+Question: {question}
+Answer:
+""".strip()
+
+SIMPLE_QA_EVAL_VANILLA_UNCERTAINTY_TEMPLATE = """
+Answer the following question using a succinct (at most one sentence) and full answer. If you are uncertain about your answer to the question, convey this uncertainty linguistically by precisely hedging this answer.
+
+Question: {question}
+Answer:
+""".strip()
 
 # new version
 class SemanticUncertaintyExtractor():
@@ -20,43 +37,74 @@ class SemanticUncertaintyExtractor():
     def get_qa_model(self, qa_model_cfg):
         return LLM(qa_model_cfg)
     
-    def __call__(self, dataset, qa_batch_job_id: list[str] = None, grader_batch_job_id: list[str] | str = None):
+    def __call__(self, dataset: MMLUProDataset | SimpleQADataset, qa_batch_job_id: list[str] | str = None, grader_batch_job_id: list[str] | str = None):
         if dataset.name == "simple_qa" or dataset.name == "mini_simple_qa":
             qa_responses = self.generate_qa_responses(dataset.df, self.confidence_extraction_method_cfg, task_name=f"simple_qa_su_qa", qa_batch_job_id=qa_batch_job_id)
+            # qa_responses are list of lists of strings, each inner list is the responses for the whole dataset
             # combine qa_responses and dataset_df
             response_df = dataset.df.copy()
             for i in range(self.confidence_extraction_method_cfg.sample_times):
                 response_df[f"response_{i}"] = qa_responses[i]
             # semantic uncertainty estimation
-            response_df_with_semantic_ids = self.get_semantic_ids_for_response_df(response_df)
+            semantic_ids = self.get_semantic_ids_for_response_df(response_df)
+            for i in range(self.confidence_extraction_method_cfg.sample_times):
+                response_df[f"semantic_id_{i}"] = semantic_ids[i]
             # confidence estimation
-            confidences = self.calculate_confidence(response_df_with_semantic_ids)
-            response_df_with_semantic_ids["confidences"] = confidences
+            confidences, predictions = self.calculate_confidence_and_predictions(response_df)
+            response_df["confidences"] = confidences
+            response_df["responses"] = predictions
             # grade the accuracy of the confidence scores
-            accuracies = dataset.grade_responses(response_df_with_semantic_ids["responses"], grader_batch_job_id=grader_batch_job_id)
-            response_df_with_semantic_ids["accuracies"] = accuracies
+            accuracies = dataset.grade_responses(response_df["responses"], grader_batch_job_id=grader_batch_job_id, task_name=f"simple_qa_su_grader")
+            response_df["accuracies"] = accuracies
         elif dataset.name == "mmlu_pro":
             pass
         else:
             raise ValueError(f"Invalid dataset name: {dataset.name}")
         # return the response_df
-        return response_df_with_semantic_ids
-
-    def calculate_confidence(self, response_df_with_semantic_ids: pd.DataFrame):
-        for idx, row in response_df_with_semantic_ids.iterrows():
-            semantic_ids = [row[f"semantic_id_{i}"] for i in range(self.confidence_extraction_method_cfg.sample_times)]
-            response_df_with_semantic_ids.at[idx, "confidences"] = semantic_ids.count(semantic_ids[0]) / len(semantic_ids)
-        return response_df_with_semantic_ids
-    
-    def get_semantic_ids_for_response_df(self, response_df: pd.DataFrame, strict_entailment=False):
-        for idx, row in response_df.iterrows():
-            response_list = [row[f"response_{i}"] for i in range(self.confidence_extraction_method_cfg.sample_times)]
-            semantic_ids = self.get_semantic_ids_for_response_list(response_list, strict_entailment)
-            for i in range(self.confidence_extraction_method_cfg.sample_times):
-                response_df.at[idx, f"semantic_id_{i}"] = semantic_ids[i]
         return response_df
 
-    def get_semantic_ids_for_response_list(self, response_list: list[str], strict_entailment=False):
+    def generate_qa_responses(self, dataset_df: pd.DataFrame, confidence_extraction_method_cfg: DictConfig, task_name: str, qa_batch_job_id: ListConfig | str  = None):
+        # prepare prompts
+        if confidence_extraction_method_cfg.qa_template == "vanilla":
+            prompt_template = SIMPLE_QA_EVAL_VANILLA_TEMPLATE
+        elif confidence_extraction_method_cfg.qa_template == "vanilla_uncertainty":
+            prompt_template = SIMPLE_QA_EVAL_VANILLA_UNCERTAINTY_TEMPLATE
+        else:
+            raise ValueError(f"Invalid qa template: {confidence_extraction_method_cfg.qa_template}")
+        qa_prompts = [prompt_template.format(question=row["problem"]) for _, row in dataset_df.iterrows()]
+        # copy qa_prompts self.confidence_extraction_method_cfg.sample_times times
+        qa_prompts_multiple = qa_prompts * self.confidence_extraction_method_cfg.sample_times
+        # generate responses
+        responses = self.qa_model(qa_prompts_multiple, task_name=task_name, batch_job_id=qa_batch_job_id)
+        # split responses into multiple lists
+        responses_multiple = [responses[i*len(dataset_df):(i+1)*len(dataset_df)] for i in range(self.confidence_extraction_method_cfg.sample_times)]
+        return responses_multiple
+
+    def calculate_confidence_and_predictions(self, response_df: pd.DataFrame):
+        confidences = []
+        predictions = []
+        for idx, row in response_df.iterrows():
+            semantic_ids_for_one_question = [row[f"semantic_id_{i}"] for i in range(self.confidence_extraction_method_cfg.sample_times)]
+            # find the most frequent semantic id
+            most_frequent_semantic_id = max(set(semantic_ids_for_one_question), key=semantic_ids_for_one_question.count)
+            confidences.append(semantic_ids_for_one_question.count(most_frequent_semantic_id) / len(semantic_ids_for_one_question))
+            index_of_most_frequent_semantic_id = semantic_ids_for_one_question.index(most_frequent_semantic_id)
+            # prediction is the response with the most frequent semantic id
+            predictions.append(response_df.at[idx, f"response_{index_of_most_frequent_semantic_id}"])
+        return confidences, predictions
+    
+    def get_semantic_ids_for_response_df(self, response_df: pd.DataFrame, strict_entailment=False) -> list[list[int]]:
+        semantic_ids_list_list = []
+        for i in range(self.confidence_extraction_method_cfg.sample_times):
+            semantic_ids_list_list.append([])
+        for idx, row in tqdm(response_df.iterrows(), total=len(response_df), desc="Getting semantic ids"):
+            response_set = [row[f"response_{i}"] for i in range(self.confidence_extraction_method_cfg.sample_times)]
+            semantic_ids = self.get_semantic_ids_for_response_set(response_set, strict_entailment)
+            for i in range(self.confidence_extraction_method_cfg.sample_times):
+                semantic_ids_list_list[i].append(semantic_ids[i])
+        return semantic_ids_list_list
+
+    def get_semantic_ids_for_response_set(self, response_set: list[str], strict_entailment=False):
         """Group list of predictions into semantic meaning."""
 
         def are_equivalent(text1, text2):
@@ -74,21 +122,86 @@ class SemanticUncertaintyExtractor():
                 semantically_equivalent = (0 not in implications) and ([1, 1] != implications)
 
             return semantically_equivalent
+        
+        def are_equivalent_batch(text1_list: list[str], text2_list: list[str], strict_entailment: bool = False):
+            assert len(text1_list) == len(text2_list), "Both lists must have the same length"
 
+            # batch inference
+            implication_1 = self.entailment_model.check_implication_batch(text1_list, text2_list)
+            implication_2 = self.entailment_model.check_implication_batch(text2_list, text1_list)
+
+            results = []
+            for i1, i2 in zip(implication_1, implication_2):
+                assert (i1 in [0, 1, 2]) and (i2 in [0, 1, 2])
+
+                if strict_entailment:
+                    semantically_equivalent = (i1 == 2) and (i2 == 2)
+                else:
+                    implications = [i1, i2]
+                    semantically_equivalent = (0 not in implications) and ([1, 1] != implications)
+
+                results.append(semantically_equivalent)
+
+            return results
+
+        # build list of pairs
+        text_pair_left = []
+        text_pair_right = []
+        for i in range(len(response_set)):
+            for j in range(i+1, len(response_set)):
+                text_pair_left.append(response_set[i])
+                text_pair_right.append(response_set[j])
+                
+        # are_equivalent_batch
+        are_equivalent_batch_results = are_equivalent_batch(text_pair_left, text_pair_right, strict_entailment)
+        
         # Initialise all ids with -1.
-        semantic_set_ids = [-1] * len(response_list)
+        semantic_set_ids = [-1] * len(response_set)
         # Keep track of current id.
         next_id = 0
-        for i, string1 in enumerate(response_list):
+        len_response_set = len(response_set)
+        for i, string1 in enumerate(response_set):
             # Check if string1 already has an id assigned.
             if semantic_set_ids[i] == -1:
                 # If string1 has not been assigned an id, assign it next_id.
                 semantic_set_ids[i] = next_id
-                for j in range(i+1, len(response_list)):
-                    # Search through all remaining strings. If they are equivalent to string1, assign them the same id.
-                    if are_equivalent(string1, response_list[j]):
+                for j in range(i+1, len(response_set)):
+                    idx = sum([len_response_set - t for t in range(i)]) - len_response_set + j - i
+                    if are_equivalent_batch_results[idx]:
                         semantic_set_ids[j] = next_id
                 next_id += 1
+        
+        # Initialise all ids with -1.
+        semantic_set_ids2 = [-1] * len(response_set)
+        # Keep track of current id.
+        next_id2 = 0
+        len_response_set = len(response_set)
+        for i, string1 in enumerate(response_set):
+            # Check if string1 already has an id assigned.
+            if semantic_set_ids2[i] == -1:
+                # If string1 has not been assigned an id, assign it next_id.
+                semantic_set_ids2[i] = next_id2
+                for j in range(i+1, len(response_set)):
+                    idx = sum([len_response_set - t for t in range(i)]) - len_response_set + j - i
+                    if are_equivalent_batch_results[idx]:
+                        semantic_set_ids2[j] = next_id2
+                next_id2 += 1
+        
+    
+                # Initialise all ids with -1.
+        semantic_set_ids_temp = [-1] * len(response_set)
+        # Keep track of current id.
+        next_id_temp = 0
+        for i, string1 in enumerate(response_set):
+            # Check if string1 already has an id assigned.
+            if semantic_set_ids_temp[i] == -1:
+                # If string1 has not been assigned an id, assign it next_id.
+                semantic_set_ids_temp[i] = next_id_temp
+                for j in range(i+1, len(response_set)):
+                    # Search through all remaining strings. If they are equivalent to string1, assign them the same id.
+                    if are_equivalent(string1, response_set[j]):
+                        semantic_set_ids_temp[j] = next_id_temp
+                next_id_temp += 1
 
         assert -1 not in semantic_set_ids
 
@@ -113,167 +226,56 @@ class EntailmentDeberta():
         # Deberta-mnli returns `neutral` and `entailment` classes at indices 1 and 2.
         largest_index = torch.argmax(F.softmax(logits, dim=1))  # pylint: disable=no-member
         prediction = largest_index.cpu().item()
-        if os.environ.get('DEBERTA_FULL_LOG', False):
-            logging.info('Deberta Input: %s -> %s', text1, text2)
-            logging.info('Deberta Prediction: %s', prediction)
-
         return prediction
 
+    def check_implication_batch(
+        self,
+        texts1,
+        texts2,
+        batch_size: int = 128,
+        max_length: int = 256,
+    ):
+        """
+        Batched inference for pairs (premise -> hypothesis).
 
-# old version
-class SemanticUncertaintyExtractor_old():
-    def __init__(self, config):
-        self.dataset = config["dataset"]
-        self.model_name = config["model_name"]
+        Args:
+            texts1: List[str] of premises.
+            texts2: List[str] of hypotheses (same length as texts1).
+            batch_size: Mini-batch size to control memory usage.
+            max_length: Truncation length for the tokenizer.
+            return_probs: If True, also return entailment probabilities.
 
-    def __call__(self, dataset: pd.DataFrame, model, sample_times: int = 10):
-        df = self.generate_responses(model, dataset, sample_times)
-        df = self.post_process_responses(df, sample_times)
-        return df    # return a dataframe with the following columns: question, gold_answer, reponse1, reponse2, reponse3, ..., confidence, accuracy
+        Returns:
+            preds: List[int] with MNLI class indices for each pair
+                   (0=contradiction, 1=neutral, 2=entailment).
+        """
+        preds = []
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        with torch.no_grad():
+            n = len(texts1)
+            for i in range(0, n, batch_size):
+                batch1 = texts1[i : i + batch_size]
+                batch2 = texts2[i : i + batch_size]
 
-    def prepare_prompt_sample(self):
-        return """Below is an instruction that describes a task. Write a response that appropriately completes the request.\n\n### Instruction:\nYou will receive a question. Please provide an answer in a single brief but complete sentence.\n\n### Question:\n{question}\n\n### Response:"""
+                # Tokenize a batch of (premise, hypothesis) pairs.
+                enc = self.tokenizer(
+                    batch1,
+                    batch2,
+                    padding=True,
+                    truncation=True,
+                    max_length=max_length,
+                    return_tensors="pt",
+                ).to(device)
 
-    def prepare_prompt_equivalence(self):
-        return """We are evaluating answers to the question {question}\nHere are two possible answers:\nPossible Answer 1: {answer1}\nPossible Answer 2: {answer2}\nDoes Possible Answer 1 semantically entail Possible Answer 2? Respond only with entailment, contradiction, or neutral.\nResponse:"""
+                # Forward pass: logits shape [B, 3]
+                logits = self.model(**enc).logits
 
-    def prepare_prompt_metric(self):
-        return """The question is: {question}.\nThe correct answer to this question is: {correct_answer}.\nThe proposed answer is: {predicted_answer}\nWithin the context of the question, does the proposed answer mean the same as any of the expected answers? Respond only with yes or no.\nResponse:"""
+                # Convert logits to probabilities over classes.
+                probs = F.softmax(logits, dim=1)   # 0:contra, 1:neutral, 2:entail
 
-    def generate_responses(self, model, df: pd.DataFrame, sample_times: int = 10):
-        prompt_sample = self.prepare_prompt_sample()
-        for i in range(sample_times):
-            df[f"response{i+1}"] = None
-        for idx, row in df.iterrows():
-            responses = model.generate(prompt_sample.format(question=row["question"]))
-            for i in range(sample_times):
-                df.at[idx, f"response{i+1}"] = responses[i]
-            df[f"response{idx+1}"] = responses[idx]["content"]
-        return df
+                # Predicted class indices.
+                pred = torch.argmax(probs, dim=1)  # shape [B]
 
-    # def generate_single_response(self, texts, model_name, sample_times):
-    #     if model_name == "Qwen3/Qwen3-8B" or True:
-    #         sampling_params = SamplingParams(
-    #             temperature=0.6,
-    #             top_p=0.95,
-    #             top_k=20,
-    #             max_tokens=32768,
-    #             min_p=0.0,
-    #             n=sample_times,
-    #             logprobs=True,
-    #         )
-    #         outputs = self.llm.generate(texts, sampling_params)
-    #         results = []
-    #         for gen_out in outputs[0].outputs:
-    #             output_ids = gen_out.token_ids
-    #             logits = getattr(gen_out, "logprobs", None)
-    #             try:
-    #                 index = len(output_ids) - output_ids[::-1].index(151668)
-    #             except ValueError:
-    #                 index = 0
-    #             thinking_content = self.tokenizer.decode(
-    #                 output_ids[:index], skip_special_tokens=True
-    #             ).strip("\n")
-    #             content = self.tokenizer.decode(
-    #                 output_ids[index:], skip_special_tokens=True
-    #             ).strip("\n")
-    #             results.append({
-    #                 "thinking_content": thinking_content,
-    #                 "split_index": index,
-    #                 "content": content,
-    #                 "gen_len": len(output_ids) - index,
-    #                 "total_len": len(output_ids),
-    #                 "logits": logits,
-    #             })
-    #         return results
+                preds.extend(pred.cpu().tolist())
 
-    def post_process_responses(self, model, df: pd.DataFrame, sample_times: int = 10):
-        # cluster
-        prompt_equivalence = self.prepare_prompt_equivalence()
-        df[f"entropy"] = None
-        for i in range(sample_times):
-            df[f"cluster{i+1}"] = None
-            df[f"prob{i+1}"] = None
-        for idx, row in tqdm(df.iterrows(), total=len(df), desc="Checking equivalence"):
-            clusters = {}
-            responses = {}
-            total_clusters = 0
-            for i in range(sample_times):
-                now_response = df.at[idx, f"response{i+1}"]
-                if now_response in responses:
-                    df.at[idx, f"cluster{i+1}"] = responses[now_response]
-                    clusters[responses[now_response]].append(i)
-                    continue
-
-                question = df.at[idx, f"question"]
-                flag = True
-                for j in range(j):
-                    response = df.at[idx, f"response{j}"]
-                    prompt_equivalence1 = prompt_equivalence.format(
-                        question=question, answer1=now_response, answer2=response)
-                    prompt_equivalence2 = prompt_equivalence.format(
-                        question=question, answer2=now_response, answer1=response)
-                    implication_1 = self.__check_(model, prompt_equivalence1)
-                    implication_2 = self.__check_(model, prompt_equivalence2)
-                    implications = [implication_1, implication_2]
-                    semantically_equivalent = (0 not in implications) and (
-                        [1, 1] != implications
-                    )
-                    if semantically_equivalent == 2:
-                        df.at[idx, f"cluster{i+1}"] = responses[response]
-                        flag = False
-                        clusters[responses[response]].append(i)
-                        break
-                if flag:
-                    total_clusters += 1
-                    df.at[idx, f"cluster{i+1}"] = total_clusters
-                    responses[now_response] = total_clusters
-                    clusters[responses[response]] = [i]
-                    
-            semantic_ids = []
-            flag = True
-            for i in range(sample_times):
-                semantic_ids.append(df.at[idx, f"cluster{i+1}"])
-                prompt_metric = self.prepare_prompt_metric().format(
-                    question=df.at[idx, "question"],
-                    correct_answer=df.at[idx, "gold_answer"],
-                    predicted_answer=df.at[idx, f"response{i+1}"]
-                )
-                metric_answer = model.generate(prompt_metric)
-                if 'yes' in metric_answer.lower() and flag:
-                    df.at[idx, "response"] = df.at[idx, f"response{i}"]
-                    flag = False
-
-            # compute semantic entropy
-            n_generations = len(semantic_ids)
-            counts = np.bincount(semantic_ids)
-            probabilities = counts/n_generations
-            assert np.isclose(probabilities.sum(), 1)
-            df.at[idx, "confidence"] = - \
-                (probabilities * np.log(probabilities)).sum()
-            df.at[idx, f"response"] = df.at[idx, f"response"]
-
-        # return
-        columns = ["question", "gold_answer"]
-        for i in range(sample_times):
-            columns.append(f"reponse{i+1}")
-        columns.append("confidence")
-        columns.append("accuracy")
-        return df[columns]
-
-    def calculate_confidence(self, model, question, responses, clusters, gold_answer):
-        pass
-
-    def calculate_accuracy(self, model, question, responses, clusters, gold_answer):
-        pass
-
-    def __check_(self, model, prompt):
-        response = model.generate_answer(prompt)[0]
-        if "entailment" in response:
-            return 2
-        elif "neutral" in response:
-            return 1
-        elif "contradiction" in response:
-            return 0
-        else:
-            return 1
+        return preds

@@ -68,7 +68,7 @@ class LLM:
         self.model: GPT | TogetherAI | Grok | Claude = self.prepare_model(model_cfg)
 
 
-    def __call__(self, prompts: list[str], task_name: str, batch_job_id: str = None) -> list[str]:
+    def __call__(self, prompts: list[str], task_name: str, batch_job_id: list[str] | str = None) -> list[str]:
         responses = self.model(prompts, task_name, batch_job_id)
         return responses
 
