@@ -36,6 +36,6 @@ def main(cfg: DictConfig):
     results.to_csv(os.path.join(save_dir, "results.csv"), index=False)
     OmegaConf.save(cfg, os.path.join(save_dir, "config.yaml"))
     logging.info(f"Outputs saved to {save_dir}")
-
+    
 if __name__ == "__main__":
     main()
