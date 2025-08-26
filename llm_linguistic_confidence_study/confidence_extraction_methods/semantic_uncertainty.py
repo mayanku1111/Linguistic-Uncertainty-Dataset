@@ -46,10 +46,13 @@ class SemanticUncertaintyExtractor():
             for i in range(self.confidence_extraction_method_cfg.sample_times):
                 response_df[f"response_{i}"] = qa_responses[i]
             # semantic uncertainty estimation
-            semantic_ids_list_list = self.get_semantic_ids_for_response_df(response_df)
-            for idx in range(len(response_df)): 
-                for i in range(self.confidence_extraction_method_cfg.sample_times):
-                    response_df.at[idx, f"semantic_id_{i}"] = semantic_ids_list_list[idx][i]
+            if self.confidence_extraction_method_cfg.semantic_id_path_debug is None:
+                semantic_ids_list_list = self.get_semantic_ids_for_response_df(response_df)
+                np.save("semantic_ids_list_list.npy", semantic_ids_list_list)
+            else:
+                semantic_ids_list_list = np.load(self.confidence_extraction_method_cfg.semantic_id_path_debug)
+            for i in range(self.confidence_extraction_method_cfg.sample_times):
+                response_df[f"semantic_id_{i}"] = semantic_ids_list_list[i]
             # confidence estimation
             confidences, predictions = self.calculate_confidence_and_predictions(response_df)
             response_df["confidences"] = confidences
@@ -217,7 +220,7 @@ class EntailmentDeberta():
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         with torch.no_grad():
             n = len(texts1)
-            for i in tqdm(range(0, n, batch_size), total=n//batch_size, desc="batch inference"):
+            for i in range(0, n, batch_size):
                 batch1 = texts1[i : i + batch_size]
                 batch2 = texts2[i : i + batch_size]
 
