@@ -1,9 +1,0 @@
-name: test_LoRA
-model_name: distilroberta-base
-state_dict_path: 
-mapper_name: self-trained
-qa_template: none
-type: human_anno_dataset_trained
-base_model_id: Qwen/Qwen3-8B
-lora_path: res/model/qwen3_8b_lora_1/checkpoint-13932
-save_path: res/model/qwen3_8b_lora_merge
