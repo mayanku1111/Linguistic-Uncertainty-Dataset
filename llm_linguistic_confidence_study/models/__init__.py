@@ -7,6 +7,7 @@ from .anthropic_models import Claude
 OPEN_AI_MODEL_LIST = [
     "gpt-5", 
     "gpt-5-mini",
+    "gpt-5-nano",
 ]
 
 # this is a list of models that support batch inference
