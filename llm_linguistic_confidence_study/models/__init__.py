@@ -3,6 +3,7 @@ from .openai_models import GPT
 from .togetherai_models import TogetherAI
 from .xai_models import Grok
 from .anthropic_models import Claude
+from .huggingface_models import Huggingface
 
 OPEN_AI_MODEL_LIST = [
     "gpt-5", 
@@ -62,6 +63,9 @@ X_AI_MODEL_LIST = [
     "grok-3-mini",
 ]
 
+HUGGING_FACE_LIST = [
+    "Qwen/Qwen3-8B-uncertainty"
+]
 
 class LLM:
     def __init__(self, model_cfg: DictConfig):
@@ -83,6 +87,8 @@ class LLM:
             return Claude(model_cfg)
         elif model_cfg.name in X_AI_MODEL_LIST:
             return Grok(model_cfg)
+        elif model_cfg.name in HUGGING_FACE_LIST:
+            return Huggingface(model_cfg)
         else:
             raise ValueError(f"Invalid model name: {model_cfg.name}")
         
