@@ -70,7 +70,7 @@ HUGGING_FACE_LIST = [
 class LLM:
     def __init__(self, model_cfg: DictConfig):
         self.model_cfg = model_cfg
-        self.model: GPT | TogetherAI | Grok | Claude = self.prepare_model(model_cfg)
+        self.model: GPT | TogetherAI | Grok | Claude | Huggingface = self.prepare_model(model_cfg)
 
 
     def __call__(self, prompts: list[str], task_name: str, batch_job_id: list[str] | str = None) -> list[str]:
