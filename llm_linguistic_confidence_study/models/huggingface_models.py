@@ -34,10 +34,12 @@ class Huggingface():
                 cfg.base_model_id,
                 device_map=device,
             )
-            model = PeftModel.from_pretrained(model, cfg.lora_weight_path)
-            model = model.merge_and_unload()
+            # Optionally apply LoRA if lora_weight_path provided
+            if hasattr(cfg, "lora_weight_path") and cfg.lora_weight_path is not None:
+                model = PeftModel.from_pretrained(model, cfg.lora_weight_path)
+                model = model.merge_and_unload()
             # model.save_pretrained(cfg.save_path)
-            # tokenizer.save_pretrained(cfg.save_path)            
+            # tokenizer.save_pretrained(cfg.save_path)
         else:
             tokenizer = AutoTokenizer.from_pretrained(cfg.save_path)
             model = AutoModelForCausalLM.from_pretrained(
