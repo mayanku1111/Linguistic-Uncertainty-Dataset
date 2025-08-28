@@ -31,7 +31,8 @@ class GPT():
                     logging.info(f"Batch job {batch_job.id} for {task_name} is completed")
                     break
             responses = self.retrieve_batch_job_output(batch_job_id)
-
+        else:
+            responses = self.retrieve_batch_job_output(batch_job_id)
         return responses
     
     def prepare_batch_task_and_submit(self, prompts: list[str], task_name: str) -> list[str]:
@@ -107,16 +108,40 @@ class GPT():
     batch_job_id: the id of the batch job
     return: a list of strings, each string is a response of a simple-qa question, in the same order as the simple-qa questions
     '''
-    def retrieve_batch_job_output(self, batch_job_id: str) -> list[str]:
+
+    def retrieve_batch_job_output(self, batch_job_id: str) -> list[str | None]:
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         batch_job = client.batches.retrieve(batch_job_id)
-        result_bytes = client.files.content(batch_job.output_file_id).content
-        result_text  = result_bytes.decode('utf-8')
 
-        results = []
+        # --- Parse results file ---
+        result_bytes = client.files.content(batch_job.output_file_id).content
+        result_text = result_bytes.decode("utf-8")
+
+        merged = {}
         for line in result_text.strip().split("\n"):
             entry = json.loads(line)
+            custom_id = entry["custom_id"]
             answer = entry["response"]["body"]["choices"][0]["message"]["content"].strip()
-            results.append(answer)
-            
-        return results
+            merged[custom_id] = answer
+
+        # --- Parse errors file ---
+        if batch_job.error_file_id:
+            error_bytes = client.files.content(batch_job.error_file_id).content
+            error_text = error_bytes.decode("utf-8")
+
+            for line in error_text.strip().split("\n"):
+                entry = json.loads(line)
+                custom_id = entry["custom_id"]
+                if custom_id not in merged:  # don’t overwrite a valid answer
+                    merged[custom_id] = None
+
+        # --- Build sorted list of responses by trailing number ---
+        responses = [
+            merged[k]
+            for k in sorted(
+                merged.keys(),
+                key=lambda x: int(x.rsplit("_", 1)[-1])  # grab the number after the last "_"
+            )
+        ]
+
+        return responses

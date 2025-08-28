@@ -40,6 +40,7 @@ class VerbalNumericalConfidenceExtractor():
     
 
     def __call__(self, dataset: MMLUProDataset | SimpleQADataset, qa_batch_job_id: str = None, grader_batch_job_id: str = None):
+        task_model_name = self.qa_model_cfg.name.split("/")[-1] if "/" in self.qa_model_cfg.name else self.qa_model_cfg.name
         if dataset.name == "simple_qa" or dataset.name == "mini_simple_qa":
 
             def extract_confidence_score(text: str) -> float | None:
@@ -58,18 +59,18 @@ class VerbalNumericalConfidenceExtractor():
                     match = re.search(pat, text)
                     if match:
                         return match.group(1)
-                return None
+                return ""
             
-            qa_responses = self.generate_qa_responses(dataset.df, self.confidence_extraction_method_cfg, task_name=f"simple_qa_{self.qa_model_cfg.model_name}_vnc_qa", qa_batch_job_id=qa_batch_job_id)
+            qa_responses = self.generate_qa_responses(dataset.df, self.confidence_extraction_method_cfg, task_name=f"simple_qa_{task_model_name}_vnc_qa", qa_batch_job_id=qa_batch_job_id)
             # combine qa_responses and dataset_df
             response_df = dataset.df.copy()
-
             response_df["raw_responses"] = qa_responses # raw responses, json format
             response_df["responses"] = [extract_answer(r) for r in qa_responses] # clean answers
             response_df["confidences"] = [extract_confidence_score(r) for r in qa_responses] # extracted confidence
             # grade the accuracy of the confidence scores
-            accuracies = dataset.grade_responses(response_df["responses"], grader_batch_job_id=grader_batch_job_id, task_name=f"simple_qa_{self.qa_model_cfg.model_name}_vnc_grader")
+            accuracies = dataset.grade_responses(response_df["responses"], grader_batch_job_id=grader_batch_job_id, task_name=f"simple_qa_{task_model_name}_vnc_grader")
             response_df["accuracies"] = accuracies 
+            
 
         elif dataset.name == "mmlu_pro":
             raise NotImplementedError("MMLU Pro has not yet been implemented. ")
