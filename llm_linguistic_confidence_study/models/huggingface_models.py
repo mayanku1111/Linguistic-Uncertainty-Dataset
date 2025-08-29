@@ -30,6 +30,8 @@ class Huggingface():
         device = "cuda" if torch.cuda.is_available() else "cpu"
         if cfg.save_path is not None and not os.path.exists(cfg.save_path):
             tokenizer = AutoTokenizer.from_pretrained(cfg.base_model_id)
+            if tokenizer.pad_token is None:
+                tokenizer.pad_token = tokenizer.eos_token
             model = AutoModelForCausalLM.from_pretrained(
                 cfg.base_model_id,
                 device_map=device,
@@ -42,12 +44,16 @@ class Huggingface():
             # tokenizer.save_pretrained(cfg.save_path)
         elif cfg.save_path is not None:
             tokenizer = AutoTokenizer.from_pretrained(cfg.save_path)
+            if tokenizer.pad_token is None:
+                tokenizer.pad_token = tokenizer.eos_token
             model = AutoModelForCausalLM.from_pretrained(
                 cfg.save_path,
                 device_map=device,
             )
         else:
             tokenizer = AutoTokenizer.from_pretrained(cfg.base_model_id)
+            if tokenizer.pad_token is None:
+                tokenizer.pad_token = tokenizer.eos_token
             model = AutoModelForCausalLM.from_pretrained(
                 cfg.base_model_id,
                 device_map=device,
