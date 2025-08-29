@@ -35,3 +35,9 @@ auroc:
   name: auroc
   format: simpleqa_like
   exclude_not_attempted: true
+
+attempted_count:
+  _target_: metrics.AttemptedCount
+  name: attempted_count
+  format: simpleqa_like
+  exclude_not_attempted: true
