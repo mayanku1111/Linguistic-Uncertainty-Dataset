@@ -54,7 +54,9 @@ class VerbalNumericalConfidenceExtractor():
             
             def extract_answer(text: str) -> float | None:
                 patterns = [r'"answer"\s*:\s*"((?:\\.|[^"\\])*)"',
-                            r'answer\s*:\s*"((?:\\.|[^"\\])*)"',]
+                            r'answer\s*:\s*"((?:\\.|[^"\\])*)"',
+                            r'"answer"\s*:\s*([^,}\n]+)',
+                            ]
                 for pat in patterns:
                     match = re.search(pat, text)
                     if match:

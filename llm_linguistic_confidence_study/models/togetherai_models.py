@@ -42,6 +42,7 @@ class TogetherAI():
         '''
         if "qwen" in self.model_cfg.name.lower(): 
             no_think_prefix = "/no_think\n"
+            print("Qwen no-think prefix preppended.")
         else:
             no_think_prefix = ""
         tasks = []
