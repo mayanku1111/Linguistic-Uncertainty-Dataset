@@ -1,2 +1,3 @@
 qa_batch_id: batch_68ae60b04fb0819099288a6c9831d4fc
-grader_batch_id: batch_68aea14814cc8190b5957ae0af7c5bef
+grader_batch_id: null
+semantic_ids_path: llm_linguistic_confidence_study/pretrained_weights/semantic_ids_gpt-5-nano.npy

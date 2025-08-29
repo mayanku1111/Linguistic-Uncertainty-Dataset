@@ -75,7 +75,10 @@ class LinguisticConfidenceExtractor():
         else:
             raise ValueError(f"Invalid confidence extraction method: {confidence_extraction_method_cfg}")
         
-    def __call__(self, dataset, qa_batch_job_id: str = None, grader_batch_job_id: str = None):
+    def __call__(self, dataset, pre_runned_batch_info: DictConfig):
+        qa_batch_job_id = pre_runned_batch_info.qa_batch_id
+        grader_batch_job_id = pre_runned_batch_info.grader_batch_id
+        
         task_model_name = self.qa_model_cfg.name.split("/")[-1] if "/" in self.qa_model_cfg.name else self.qa_model_cfg.name
         if dataset.name == "simple_qa" or dataset.name == "mini_simple_qa":
             qa_responses = self.generate_qa_responses(dataset.df, self.confidence_extraction_method_cfg, task_name=f"simple_qa_{task_model_name}_lc_qa", qa_batch_job_id=qa_batch_job_id)

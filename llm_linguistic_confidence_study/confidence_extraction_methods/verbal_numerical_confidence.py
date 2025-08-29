@@ -39,7 +39,10 @@ class VerbalNumericalConfidenceExtractor():
         return LLM(qa_model_cfg)
     
 
-    def __call__(self, dataset: MMLUProDataset | SimpleQADataset, qa_batch_job_id: str = None, grader_batch_job_id: str = None):
+    def __call__(self, dataset: MMLUProDataset | SimpleQADataset, pre_runned_batch_info: DictConfig):
+        qa_batch_job_id = pre_runned_batch_info.qa_batch_id
+        grader_batch_job_id = pre_runned_batch_info.grader_batch_id
+        
         task_model_name = self.qa_model_cfg.name.split("/")[-1] if "/" in self.qa_model_cfg.name else self.qa_model_cfg.name
         if dataset.name == "simple_qa" or dataset.name == "mini_simple_qa":
 

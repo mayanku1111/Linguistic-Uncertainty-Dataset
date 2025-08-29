@@ -1,11 +1,11 @@
 defaults:
- - qa_model: Llama-4-Scout-17B-16E-Instruct
+ - qa_model: gpt-5-mini
  - confidence_extractor: linguistic_confidence
 #  - confidence_extractor: semantic_uncertainty
 #  - confidence_extractor: verbal_numerical_confidence
  - dataset: simple_qa
  - metrics: all
- - pre_runned_batch: vanilla-uncertainty-Llama-4-Scout-17B-16E-Instruct
+ - pre_runned_batch: vanilla-gpt-5-mini.yaml
 
 
 hydra:
