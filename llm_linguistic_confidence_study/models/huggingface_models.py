@@ -40,10 +40,16 @@ class Huggingface():
                 model = model.merge_and_unload()
             # model.save_pretrained(cfg.save_path)
             # tokenizer.save_pretrained(cfg.save_path)
-        else:
+        elif cfg.save_path is not None:
             tokenizer = AutoTokenizer.from_pretrained(cfg.save_path)
             model = AutoModelForCausalLM.from_pretrained(
                 cfg.save_path,
+                device_map=device,
+            )
+        else:
+            tokenizer = AutoTokenizer.from_pretrained(cfg.base_model_id)
+            model = AutoModelForCausalLM.from_pretrained(
+                cfg.base_model_id,
                 device_map=device,
             )
         return model, tokenizer
