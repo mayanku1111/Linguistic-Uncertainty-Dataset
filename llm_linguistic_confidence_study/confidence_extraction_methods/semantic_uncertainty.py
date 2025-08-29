@@ -38,8 +38,9 @@ class SemanticUncertaintyExtractor():
         return LLM(qa_model_cfg)
     
     def __call__(self, dataset: MMLUProDataset | SimpleQADataset, qa_batch_job_id: list[str] | str = None, grader_batch_job_id: list[str] | str = None):
+        task_model_name = self.qa_model_cfg.name.split("/")[-1] if "/" in self.qa_model_cfg.name else self.qa_model_cfg.name
         if dataset.name == "simple_qa" or dataset.name == "mini_simple_qa":
-            qa_responses = self.generate_qa_responses(dataset.df, self.confidence_extraction_method_cfg, task_name=f"simple_qa_{self.qa_model_cfg.name}_su_qa", qa_batch_job_id=qa_batch_job_id)
+            qa_responses = self.generate_qa_responses(dataset.df, self.confidence_extraction_method_cfg, task_name=f"simple_qa_{task_model_name}_su_qa", qa_batch_job_id=qa_batch_job_id)
             # qa_responses are list of lists of strings, each inner list is the responses for the whole dataset
             # combine qa_responses and dataset_df
             response_df = dataset.df.copy()
@@ -58,7 +59,7 @@ class SemanticUncertaintyExtractor():
             response_df["confidences"] = confidences
             response_df["responses"] = predictions
             # grade the accuracy of the confidence scores
-            accuracies = dataset.grade_responses(response_df["responses"], grader_batch_job_id=grader_batch_job_id, task_name=f"simple_qa_{self.qa_model_cfg.name}_su_grader")
+            accuracies = dataset.grade_responses(response_df["responses"], grader_batch_job_id=grader_batch_job_id, task_name=f"simple_qa_{task_model_name}_su_grader")
             response_df["accuracies"] = accuracies
         elif dataset.name == "mmlu_pro":
             pass

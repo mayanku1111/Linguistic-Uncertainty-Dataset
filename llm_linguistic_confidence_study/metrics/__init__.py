@@ -1,6 +1,7 @@
 from .acc import Accuracy
 from .ece import ECE
 from .auroc import AUROC
+from .attempted_count import AttemptedCount
 from omegaconf import DictConfig
 
 class MetricEvaluator:
@@ -20,6 +21,7 @@ class MetricEvaluator:
             return ECE(metric_cfg)
         elif metric_cfg.name == "auroc":
             return AUROC(metric_cfg)
-
+        elif metric_cfg.name == "attempted_count":
+            return AttemptedCount(metric_cfg)
         else:
             raise ValueError(f"Metric {metric_cfg.name} not found")

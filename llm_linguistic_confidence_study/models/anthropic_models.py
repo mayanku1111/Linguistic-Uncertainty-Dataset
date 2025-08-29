@@ -22,8 +22,8 @@ class Claude():
             # check batch job status
             while True:
                 batch_job = self.check_batch_job(batch_job_id)
-                if batch_job.status != "ended":
-                    logging.info(f"Batch job {batch_job.id} for {task_name} is {batch_job.status}, waiting for 60 seconds...")
+                if batch_job.processing_status != "ended":
+                    logging.info(f"Batch job {batch_job.id} for {task_name} is {batch_job.processing_status}, waiting for 60 seconds...")
                     time.sleep(60)
                 else:
                     logging.info(f"Batch job {batch_job.id} for {task_name} is completed")
@@ -43,29 +43,26 @@ class Claude():
                 custom_id = task_name + "_" + str(idx),      
                 params = MessageCreateParamsNonStreaming(
                     model = self.model_cfg.name,  
+                    system = OPENAI_SYSTEM_PROMPT,
                     messages = [
-                        {
-                            "role": "system",
-                            "content": OPENAI_SYSTEM_PROMPT
-                        },
                         {
                             "role": "user",
                             "content": prompt
                         }
                     ],
-                    system=[{"cache_control": {"type": "ephemeral"}}]
+                    max_tokens=1000
                 )
             )
             tasks.append(task)
         self.tasks = tasks
         # Write the tasks to a JSONL file
-        with open(f'batch_tasks/{task_name}.jsonl', 'w', encoding='utf-8') as f:
-            for t in tasks:
-                f.write(json.dumps(t, ensure_ascii=False) + '\n')
+        # with open(f'batch_tasks/{task_name}.jsonl', 'w', encoding='utf-8') as f:
+        #     for t in tasks:
+        #         f.write(json.dumps(t, ensure_ascii=False) + '\n')
 
         client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-        message_batch = client.messages.batches.create(tasks)        
+        message_batch = client.messages.batches.create(requests=tasks)        
 
         # return batch id
         return message_batch.id
@@ -82,7 +79,7 @@ class Claude():
         responses = []
         results = list(client.messages.batches.results(batch_job_id))
         # Sort results by custom_id
-        results.sort(key=lambda r: r.custom_id)
+        results.sort(key=lambda r: int(r.custom_id.split("_")[-1]))
 
         for result in results:
             match result.result.type:

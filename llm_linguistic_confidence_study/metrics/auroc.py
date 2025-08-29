@@ -6,6 +6,7 @@ class AUROC:
         self.metric_cfg = metric_cfg
 
     def evaluate(self, responses_df):
+        responses_df = responses_df.query(""" accuracies == accuracies & confidences == confidences """)
         if self.metric_cfg.format == "simpleqa_like":
             if self.metric_cfg.exclude_not_attempted:
                 filtered_responses_df = responses_df[responses_df["accuracies"] != "NOT_ATTEMPTED"]
