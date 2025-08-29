@@ -14,7 +14,7 @@ class Grok():
 
     def __call__(self, prompts: list[str], task_name: str, retrieval_id: str = None) -> list[str]:
         if retrieval_id is None:
-            retrieval_id = f"grok_{task_name}_{datetime.now().strftime("%Y%m%d_%H%M%S")}"
+            retrieval_id = f"grok_{task_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}" 
             task_file_path = f'llm_linguistic_confidence_study/batch_tasks/{retrieval_id}.npy'
             print("Grok Retrieval ID:", retrieval_id)
             responses = self.real_time_inference(prompts, retrieval_id)
