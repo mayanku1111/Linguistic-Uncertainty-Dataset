@@ -28,7 +28,7 @@ class Huggingface():
     
     def load_model(self, cfg):
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        if not os.path.exists(cfg.save_path):
+        if cfg.save_path is not None and not os.path.exists(cfg.save_path):
             tokenizer = AutoTokenizer.from_pretrained(cfg.base_model_id)
             model = AutoModelForCausalLM.from_pretrained(
                 cfg.base_model_id,
