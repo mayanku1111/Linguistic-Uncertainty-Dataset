@@ -37,7 +37,11 @@ class SemanticUncertaintyExtractor():
     def get_qa_model(self, qa_model_cfg):
         return LLM(qa_model_cfg)
     
-    def __call__(self, dataset: MMLUProDataset | SimpleQADataset, qa_batch_job_id: list[str] | str = None, grader_batch_job_id: list[str] | str = None):
+    def __call__(self, dataset: MMLUProDataset | SimpleQADataset, pre_runned_batch_info: DictConfig):
+        qa_batch_job_id = pre_runned_batch_info.qa_batch_id
+        grader_batch_job_id = pre_runned_batch_info.grader_batch_id
+        semantic_ids_path = pre_runned_batch_info.semantic_ids_path
+        
         task_model_name = self.qa_model_cfg.name.split("/")[-1] if "/" in self.qa_model_cfg.name else self.qa_model_cfg.name
         if dataset.name == "simple_qa" or dataset.name == "mini_simple_qa":
             qa_responses = self.generate_qa_responses(dataset.df, self.confidence_extraction_method_cfg, task_name=f"simple_qa_{task_model_name}_su_qa", qa_batch_job_id=qa_batch_job_id)
@@ -47,11 +51,11 @@ class SemanticUncertaintyExtractor():
             for i in range(self.confidence_extraction_method_cfg.sample_times):
                 response_df[f"response_{i}"] = qa_responses[i]
             # semantic uncertainty estimation
-            if self.confidence_extraction_method_cfg.semantic_id_path_debug is None:
-                semantic_ids_list_list = self.get_semantic_ids_for_response_df(response_df)
-                np.save("semantic_ids_list_list.npy", semantic_ids_list_list)
+            if os.path.exists(semantic_ids_path):
+                semantic_ids_list_list = np.load(semantic_ids_path)
             else:
-                semantic_ids_list_list = np.load(self.confidence_extraction_method_cfg.semantic_id_path_debug)
+                semantic_ids_list_list = self.get_semantic_ids_for_response_df(response_df)
+                np.save(semantic_ids_path, semantic_ids_list_list)
             for i in range(self.confidence_extraction_method_cfg.sample_times):
                 response_df[f"semantic_id_{i}"] = semantic_ids_list_list[i]
             # confidence estimation
