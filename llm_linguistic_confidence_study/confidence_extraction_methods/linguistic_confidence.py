@@ -1,10 +1,10 @@
-import torch
-import torch.nn as nn
-from transformers import AutoModel, AutoTokenizer
-from ..models import LLM
+
+import requests
+import os
 import pandas as pd
-from omegaconf import DictConfig
 import re
+from ..models import LLM
+from omegaconf import DictConfig
 
 SIMPLE_QA_EVAL_VANILLA_TEMPLATE = """
 Answer the following question using a succinct (at most one sentence) and full answer.
@@ -54,107 +54,67 @@ Proposed answer: {response}
 """.strip()
 
 
+
+import requests
+import os
+
 class LinguisticConfidenceExtractor():
-    def __init__(self, confidence_extraction_method_cfg, qa_model_cfg):
-        self.confidence_extraction_method_cfg = confidence_extraction_method_cfg
-        self.qa_model_cfg = qa_model_cfg
-        self.qa_model = self.get_qa_model(self.qa_model_cfg)
-        self.confidence_mapper = self.get_confidence_mapper(self.confidence_extraction_method_cfg)
-        
-    def get_qa_model(self, qa_model_cfg):
-        return LLM(qa_model_cfg)
-    
-    def get_confidence_mapper(self, confidence_extraction_method_cfg):
-        if confidence_extraction_method_cfg.mapper_name == "self-trained":
-            confidence_estimator = LinguisticConfidenceEstimator(confidence_extraction_method_cfg)
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            confidence_estimator.reg_head.load_state_dict(torch.load(confidence_extraction_method_cfg.state_dict_path))
-            return confidence_estimator.to(device)
-        elif confidence_extraction_method_cfg.mapper_name == "decisiveness":
-            return DecisivenessEstimator(confidence_extraction_method_cfg)
-        else:
-            raise ValueError(f"Invalid confidence extraction method: {confidence_extraction_method_cfg}")
-        
-    def __call__(self, dataset, pre_runned_batch_info: DictConfig):
-        qa_batch_job_id = pre_runned_batch_info.qa_batch_id
-        grader_batch_job_id = pre_runned_batch_info.grader_batch_id
-        
-        task_model_name = self.qa_model_cfg.name.split("/")[-1] if "/" in self.qa_model_cfg.name else self.qa_model_cfg.name
-        if dataset.name == "simple_qa" or dataset.name == "mini_simple_qa":
-            qa_responses = self.generate_qa_responses(dataset.df, self.confidence_extraction_method_cfg, task_name=f"simple_qa_{task_model_name}_lc_qa", qa_batch_job_id=qa_batch_job_id)
-            # combine qa_responses and dataset_df
-            response_df = dataset.df.copy()
-            response_df["responses"] = qa_responses
-            # confidence estimation
-            confidences = self.confidence_mapper(response_df)
-            response_df["confidences"] = confidences
-            # grade the accuracy of the confidence scores
-            accuracies = dataset.grade_responses(response_df["responses"], grader_batch_job_id=grader_batch_job_id, task_name=f"simple_qa_{task_model_name}_lc_grader")
-            response_df["accuracies"] = accuracies
-        elif dataset.name == "mmlu_pro":
-            pass
-        else:
-            raise ValueError(f"Invalid dataset name: {dataset.name}")
-        # return the response_df
-        return response_df
+    def __init__(self, model_name="meta-llama/llama-3.1-8b-instruct", api_key=None):
+        self.model_name = model_name
+        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
 
+    def extract_lvu(self, questions):
+        url = "https://openrouter.ai/api/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        results = []
+        for q in questions:
+            prompt = SIMPLE_QA_EVAL_VANILLA_UNCERTAINTY_TEMPLATE.format(question=q)
+            data = {
+                "model": self.model_name,
+                "messages": [
+                    {"role": "user", "content": prompt}
+                ]
+            }
+            response = requests.post(url, headers=headers, json=data)
+            if response.status_code == 200:
+                answer = response.json()["choices"][0]["message"]["content"]
+            else:
+                answer = None
+            results.append({"question": q, "LVU_answer": answer})
+        return results
 
-    def generate_qa_responses(self, dataset_df: pd.DataFrame, confidence_extraction_method_cfg: DictConfig, task_name: str, qa_batch_job_id: str = None) -> list[str]:
-        # prepare prompts
-        if confidence_extraction_method_cfg.qa_template == "vanilla":
-            prompt_template = SIMPLE_QA_EVAL_VANILLA_TEMPLATE
-        elif confidence_extraction_method_cfg.qa_template == "vanilla_uncertainty":
-            prompt_template = SIMPLE_QA_EVAL_VANILLA_UNCERTAINTY_TEMPLATE
-        else:
-            raise ValueError(f"Invalid qa template: {confidence_extraction_method_cfg.qa_template}")
-        qa_prompts = [prompt_template.format(question=row["problem"]) for _, row in dataset_df.iterrows()]
-        # generate responses
-        responses = self.qa_model(qa_prompts, task_name=task_name, batch_job_id=qa_batch_job_id)
-        # post-process the responses if needed
-        return responses
-
-        
-class LinguisticConfidenceEstimator(nn.Module):
-    def __init__(self, cfg: DictConfig):
-        super().__init__()
-        self.cfg = cfg
-        self.encoder = AutoModel.from_pretrained(cfg.model_name)
-        self.reg_head = nn.Sequential(
-            nn.Linear(self.encoder.config.hidden_size, 1),
-            nn.Sigmoid()  # output range in [0, 1]
-        )
-        
-    def __call__(self, response_df: pd.DataFrame, batch_size: int = 32) -> list[float]:
-        tokenizer = AutoTokenizer.from_pretrained(self.cfg.model_name)
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-        responses = response_df["responses"].tolist()
-        all_confidences = []
-
-        for i in range(0, len(responses), batch_size):
-            batch_responses = responses[i:i + batch_size]
-
-            inputs = tokenizer(
-                batch_responses,
-                return_tensors="pt",
-                truncation=True,
-                padding=True,
-                max_length=128
-            )
-            inputs = {k: v.to(device) for k, v in inputs.items()}
-
-            with torch.no_grad():
-                output = self.encoder(
-                    input_ids=inputs["input_ids"],
-                    attention_mask=inputs["attention_mask"]
-                )
-                cls_hidden = output.last_hidden_state[:, 0]
-                confidence_scores = self.reg_head(cls_hidden).squeeze(-1).detach().cpu().numpy()
-                all_confidences.extend(confidence_scores.tolist())
-
-        return all_confidences
-    
-class DecisivenessEstimator():
+    def extract_decisiveness(self, lvu_results):
+        url = "https://openrouter.ai/api/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        scores = []
+        for item in lvu_results:
+            question = item["question"]
+            answer = item["LVU_answer"]
+            prompt = DECISIVENESS_PROMPT.format(question=question, response=answer)
+            data = {
+                "model": self.model_name,
+                "messages": [
+                    {"role": "user", "content": prompt}
+                ]
+            }
+            response = requests.post(url, headers=headers, json=data)
+            if response.status_code == 200:
+                resp_text = response.json()["choices"][0]["message"]["content"]
+                match = re.search(r"Decisiveness score: (\d+\.\d+)", resp_text)
+                if match:
+                    score = float(match.group(1))
+                else:
+                    score = None
+            else:
+                score = None
+            scores.append(score)
+        return scores
     def __init__(self, cfg: DictConfig):
         self.decisiveness_prompt_template = DECISIVENESS_PROMPT
         self.model = LLM(cfg.model)

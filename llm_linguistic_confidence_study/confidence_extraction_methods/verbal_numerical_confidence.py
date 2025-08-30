@@ -28,11 +28,38 @@ Please provide a confidence score between 0 and 100 at the end of your answer in
 
 
 
+import requests
+import os
+
 class VerbalNumericalConfidenceExtractor():
     def __init__(self, confidence_extraction_method_cfg, qa_model_cfg):
         self.confidence_extraction_method_cfg = confidence_extraction_method_cfg
         self.qa_model_cfg = qa_model_cfg
         self.qa_model = self.get_qa_model(self.qa_model_cfg)
+
+    def extract_with_openrouter(self, questions, api_key=None, model_name="meta-llama/llama-3.1-8b-instruct"):
+        api_key = api_key or os.getenv("OPENROUTER_API_KEY")
+        url = "https://openrouter.ai/api/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        results = []
+        for q in questions:
+            prompt = f"Answer the following question with a numerical value if possible. If you are uncertain, express your uncertainty numerically (e.g., with a range, probability, or confidence interval).\nQuestion: {q}\nAnswer:"
+            data = {
+                "model": model_name,
+                "messages": [
+                    {"role": "user", "content": prompt}
+                ]
+            }
+            response = requests.post(url, headers=headers, json=data)
+            if response.status_code == 200:
+                answer = response.json()["choices"][0]["message"]["content"]
+            else:
+                answer = None
+            results.append({"question": q, "NVU_answer": answer})
+        return results
 
 
     def get_qa_model(self, qa_model_cfg):

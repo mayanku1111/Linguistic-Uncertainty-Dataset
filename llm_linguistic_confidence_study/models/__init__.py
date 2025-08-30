@@ -1,9 +1,78 @@
 from omegaconf import DictConfig
-from .openai_models import GPT
-from .togetherai_models import TogetherAI
-from .xai_models import Grok
-from .anthropic_models import Claude
-from .huggingface_models import Huggingface
+
+# Import optional model backends. If a dependency is missing, keep the symbol as None
+# so importing this package doesn't fail for users who only need a subset.
+try:
+    from .openai_models import GPT
+except Exception:
+    GPT = None
+
+try:
+    from .togetherai_models import TogetherAI
+except Exception:
+    TogetherAI = None
+
+try:
+    from .xai_models import Grok
+except Exception:
+    Grok = None
+
+try:
+    from .anthropic_models import Claude
+except Exception:
+    Claude = None
+
+try:
+    from .huggingface_models import Huggingface
+except Exception:
+    Huggingface = None
+
+try:
+    from .openrouter_llama import OpenRouterLlama
+except Exception:
+    # If the full class couldn't be imported (maybe due to typing or other runtime issues),
+    # try to import the lightweight helper and build a fallback wrapper so the package
+    # can still be used.
+    try:
+        from .openrouter_llama import generate_openrouter_llama
+
+        class OpenRouterLlama:
+            def __init__(self, model_cfg: DictConfig):
+                # minimal mapping from cfg to expected attributes
+                try:
+                    self.model_name = model_cfg.name
+                except Exception:
+                    self.model_name = model_cfg.get("name", model_cfg.get("base_model_id", "meta-llama/llama-3.1-8b-instruct"))
+                self.api_key = getattr(model_cfg, "api_key", None) or None
+                self.temperature = getattr(model_cfg, "temperature", None)
+                self.top_p = getattr(model_cfg, "top_p", None)
+                self.top_k = getattr(model_cfg, "top_k", None)
+                self.max_tokens = getattr(model_cfg, "max_tokens", None)
+
+            def __call__(self, prompts, task_name=None, batch_job_id=None):
+                if isinstance(prompts, str):
+                    prompts = [prompts]
+                results = []
+                for p in prompts:
+                    try:
+                        text = generate_openrouter_llama(
+                            p,
+                            api_key=self.api_key,
+                            model_name=self.model_name,
+                            temperature=self.temperature,
+                            top_p=self.top_p,
+                            top_k=self.top_k,
+                            max_tokens=self.max_tokens,
+                        )
+                    except Exception:
+                        text = None
+                    results.append(text)
+                return results
+    except Exception:
+        OpenRouterLlama = None
+        OPENROUTER_IMPORT_ERROR = True
+    else:
+        OPENROUTER_IMPORT_ERROR = False
 
 OPEN_AI_MODEL_LIST = [
     "gpt-5", 
@@ -22,6 +91,7 @@ TOGETHER_AI_MODEL_LIST = [
     "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
     "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
     "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
+    "meta-llama/Llama-3.1-8B-Instruct",
     "mistralai/Mistral-7B-Instruct-v0.1",
     "mistralai/Mixtral-8x7B-Instruct-v0.1",
     "moonshotai/Kimi-K2-Instruct",
@@ -63,9 +133,14 @@ X_AI_MODEL_LIST = [
     "grok-3-mini",
 ]
 
+
 HUGGING_FACE_LIST = [
     "Qwen/Qwen3-8B-uncertainty",
     "meta-llama/Meta-Llama-3.1-8B-Instruct"
+]
+
+OPENROUTER_LLAMA_LIST = [
+    "meta-llama/llama-3.1-8b-instruct"
 ]
 
 class LLM:
@@ -81,15 +156,29 @@ class LLM:
 
     def prepare_model(self, model_cfg: DictConfig):
         if model_cfg.name in OPEN_AI_MODEL_LIST:
+            if GPT is None:
+                raise RuntimeError("Requested OpenAI model but `openai` backend is not available (missing dependency).")
             return GPT(model_cfg)
         elif model_cfg.name in TOGETHER_AI_MODEL_LIST:
+            if TogetherAI is None:
+                raise RuntimeError("Requested TogetherAI model but `togetherai` backend is not available (missing dependency).")
             return TogetherAI(model_cfg)
         elif model_cfg.name in ANTHROPIC_AI_MODEL_LIST:
+            if Claude is None:
+                raise RuntimeError("Requested Anthropic model but `anthropic` backend is not available (missing dependency).")
             return Claude(model_cfg)
         elif model_cfg.name in X_AI_MODEL_LIST:
+            if Grok is None:
+                raise RuntimeError("Requested Grok model but `xai` backend is not available (missing dependency).")
             return Grok(model_cfg)
         elif model_cfg.name in HUGGING_FACE_LIST:
+            if Huggingface is None:
+                raise RuntimeError("Requested HuggingFace model but `huggingface` backend is not available (missing dependency).")
             return Huggingface(model_cfg)
+        elif model_cfg.name in OPENROUTER_LLAMA_LIST:
+            if OpenRouterLlama is None:
+                raise RuntimeError("Requested OpenRouter Llama model but the OpenRouter wrapper failed to import.")
+            return OpenRouterLlama(model_cfg)
         else:
             raise ValueError(f"Invalid model name: {model_cfg.name}")
         

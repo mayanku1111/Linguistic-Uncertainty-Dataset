@@ -1,0 +1,9 @@
+name: meta-llama/llama-3.1-8b-instruct
+max_tokens: 512
+temperature: 0.7
+top_p: 1.0
+top_k: 50
+min_p: 0.0
+save_path: null
+base_model_id: null
+lora_weight_path: null

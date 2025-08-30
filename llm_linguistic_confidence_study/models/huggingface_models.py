@@ -4,6 +4,37 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 import torch
 
+from typing import Tuple
+
+def _load_tokenizer_and_model(model_id: str, use_save_path: str | None, device: str) -> Tuple:
+    """Helper to load tokenizer and model with clearer errors for gated/private repos.
+
+    Raises RuntimeError with actionable instructions if download fails (e.g. 401 or private repo).
+    """
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(model_id)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            device_map=device,
+        )
+        return model, tokenizer
+    except Exception as e:
+        # Provide an actionable error for common HF gated/private repo errors.
+        msg = (
+            f"Failed to load Hugging Face model/tokenizer for '{model_id}': {e}\n"
+            "This commonly happens when the model repository is gated or private.\n"
+            "Fixes:\n"
+            "  1) Set the environment variable HUGGINGFACE_HUB_TOKEN to a token with access:\n"
+            "       export HUGGINGFACE_HUB_TOKEN=\"hf_xxx...\"\n"
+            "     or run: huggingface-cli login\n"
+            "  2) If you don't have access, use an alternative runtime (OpenRouter) and an OpenRouter model id in your config.\n"
+            "  3) Or place a local copy of the model/tokenizer and set `cfg.save_path` to that folder.\n"
+            "Original exception:\n" + repr(e)
+        )
+        raise RuntimeError(msg)
+
 class Huggingface():
     def __init__(self, model_cfg: DictConfig):
         self.model_cfg = model_cfg
@@ -29,13 +60,7 @@ class Huggingface():
     def load_model(self, cfg):
         device = "cuda" if torch.cuda.is_available() else "cpu"
         if cfg.save_path is not None and not os.path.exists(cfg.save_path):
-            tokenizer = AutoTokenizer.from_pretrained(cfg.base_model_id)
-            if tokenizer.pad_token is None:
-                tokenizer.pad_token = tokenizer.eos_token
-            model = AutoModelForCausalLM.from_pretrained(
-                cfg.base_model_id,
-                device_map=device,
-            )
+            model, tokenizer = _load_tokenizer_and_model(cfg.base_model_id, cfg.save_path, device)
             # Optionally apply LoRA if lora_weight_path provided
             if hasattr(cfg, "lora_weight_path") and cfg.lora_weight_path is not None:
                 model = PeftModel.from_pretrained(model, cfg.lora_weight_path)
@@ -43,21 +68,19 @@ class Huggingface():
             # model.save_pretrained(cfg.save_path)
             # tokenizer.save_pretrained(cfg.save_path)
         elif cfg.save_path is not None:
-            tokenizer = AutoTokenizer.from_pretrained(cfg.save_path)
-            if tokenizer.pad_token is None:
-                tokenizer.pad_token = tokenizer.eos_token
-            model = AutoModelForCausalLM.from_pretrained(
-                cfg.save_path,
-                device_map=device,
-            )
+            # load from a local save path
+            try:
+                tokenizer = AutoTokenizer.from_pretrained(cfg.save_path)
+                if tokenizer.pad_token is None:
+                    tokenizer.pad_token = tokenizer.eos_token
+                model = AutoModelForCausalLM.from_pretrained(
+                    cfg.save_path,
+                    device_map=device,
+                )
+            except Exception as e:
+                raise RuntimeError(f"Failed to load model from local save_path '{cfg.save_path}': {e}")
         else:
-            tokenizer = AutoTokenizer.from_pretrained(cfg.base_model_id)
-            if tokenizer.pad_token is None:
-                tokenizer.pad_token = tokenizer.eos_token
-            model = AutoModelForCausalLM.from_pretrained(
-                cfg.base_model_id,
-                device_map=device,
-            )
+            model, tokenizer = _load_tokenizer_and_model(cfg.base_model_id, None, device)
         return model, tokenizer
 
     def get_generate_config(self, cfg):
